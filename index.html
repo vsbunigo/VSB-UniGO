@@ -648,12 +648,31 @@ else document.addEventListener('DOMContentLoaded', ugInitServices);
       const faculty = document.getElementById('auth-faculty').value;
       if(!name) { alert("Zadejte prosím své jméno."); return; }
 
-      currentUser = { name, faculty, xp: 0 };
+      let db = {}; try { db = JSON.parse(localStorage.getItem('vsb_users_db')||'{}')||{}; } catch(e){}
+      const key = name.toLowerCase();
+      const prev = db[key];
+      let xp = prev ? (+prev.xp||0) : 0;
+      try { const act = JSON.parse(localStorage.getItem('vsb_active_user')||'null'); if (act && act.name && act.name.toLowerCase()===key) xp = Math.max(xp, +act.xp||0); } catch(e){}
+      currentUser = { name, faculty, xp };
       localStorage.setItem('vsb_active_user', JSON.stringify(currentUser));
+      try { db[key] = currentUser; localStorage.setItem('vsb_users_db', JSON.stringify(db)); } catch(e){}
       initUserSession();
+      if (typeof updateXPDisplay === 'function') updateXPDisplay();
     }
 
+    // Automatické přihlášení – načte uloženého uživatele a XP
+    (function(){
+      function restore(){
+        try{
+          const saved = JSON.parse(localStorage.getItem('vsb_active_user')||'null');
+          if(saved && saved.name){ currentUser = { name:saved.name, faculty:saved.faculty||'FEI', xp:+saved.xp||0 }; initUserSession(); }
+        }catch(e){}
+      }
+      if(document.readyState!=='loading') setTimeout(restore,0); else document.addEventListener('DOMContentLoaded', restore);
+    })();
+
     function handleLogout() {
+      if (currentUser) { try { const db = JSON.parse(localStorage.getItem('vsb_users_db')||'{}')||{}; db[currentUser.name.toLowerCase()] = currentUser; localStorage.setItem('vsb_users_db', JSON.stringify(db)); } catch(e){} }
       currentUser = null;
       localStorage.removeItem('vsb_active_user');
       document.getElementById('screen-main').classList.add('hidden');
@@ -927,6 +946,7 @@ else document.addEventListener('DOMContentLoaded', ugInitServices);
       let pct = Math.min((currentUser.xp / 500) * 100, 100);
       document.getElementById('quest-bar').style.width = `${pct}%`;
       localStorage.setItem('vsb_active_user', JSON.stringify(currentUser));
+      try { const db = JSON.parse(localStorage.getItem('vsb_users_db')||'{}')||{}; db[currentUser.name.toLowerCase()] = currentUser; localStorage.setItem('vsb_users_db', JSON.stringify(db)); } catch(e){}
     }
 
     function switchTab(tabId) {
