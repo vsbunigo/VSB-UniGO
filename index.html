@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VŠB UniGO – živá navigace kampusem</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: 'var(--brand-color, #2563eb)', 600: 'var(--brand-dark, #1d4ed8)' }
+          },
+          fontFamily: { sans: ['Inter', 'sans-serif'], arcade: ['"Press Start 2P"', 'monospace'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --brand-color: #00A9CE;
+      --brand-dark: #0087A6;
+    }
+    body { font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; width: 100vw; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; background: #030305; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    @keyframes pulse-neon {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(244, 63, 94, 0.7); }
+      50% { transform: scale(1.08); box-shadow: 0 0 35px rgba(244, 63, 94, 1); }
+    }
+    .heart-pulsing { animation: pulse-neon 1.4s infinite; }
+
+    @keyframes pop-in {
+      0% { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .popup-animation { animation: pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+    .crt-screen {
+      position: relative;
+      overflow: hidden;
+    }
+    .crt-screen::after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.35) 50%);
+      background-size: 100% 4px;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    .arcade-cabinet {
+      background: linear-gradient(145deg, #12121a, #050508);
+      border: 4px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 25px 50px rgba(0,0,0,0.9), inset 0 0 25px rgba(0,0,0,0.8);
+    }
+
+    .leaflet-popup-content-wrapper { background: rgba(12, 12, 16, 0.98); backdrop-filter: blur(16px); color: #f4f4f5; border-radius: 20px; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 25px 40px -10px rgba(0, 0, 0, 0.8); }
+    .leaflet-popup-content { margin: 0; }
+    .leaflet-popup-tip { background: rgba(12, 12, 16, 0.98); }
+    .leaflet-popup-close-button { color: #a1a1aa !important; top: 12px !important; right: 12px !important; }
+
+    .walk-route { animation: walk-dash 1s linear infinite; filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
+    @keyframes walk-dash { to { stroke-dashoffset: -11; } }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgba(24,24,27,.96) !important; color: #fff; border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(12px); }
+    .leaflet-popup-content-wrapper { border-radius: 20px !important; box-shadow: 0 20px 50px -10px rgba(0,0,0,.7) !important; }
+    .leaflet-container { background: #e9eef0; font-family: 'Inter', sans-serif; }
+    button { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible { outline: 2px solid var(--brand-color); outline-offset: 2px; }
+    #navigation-hud { animation: pop-in .3s cubic-bezier(.175,.885,.32,1.275); }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; } }
+  </style>
+</head>
+<body class="text-gray-900 flex flex-col antialiased selection:bg-brand-500 selection:text-white">
+
+  <div id="app-wrapper" class="w-screen h-screen flex flex-col relative overflow-hidden">
+
+    <!-- Celoobrazovkový Popup pro Srdíčko (+1 XP) -->
+    <div id="heart-popup-overlay" class="absolute inset-0 z-50 bg-gray-900/30 backdrop-blur-md flex items-center justify-center hidden">
+      <div class="bg-white border border-rose-500/60 p-8 rounded-3xl shadow-lg flex flex-col items-center space-y-3 popup-animation max-w-xs mx-4 text-center">
+        <div class="w-20 h-20 bg-rose-500/20 border border-rose-500/60 rounded-3xl flex items-center justify-center text-rose-500 text-4xl shadow-inner">
+          <i class="fa-solid fa-heart animate-bounce"></i>
+        </div>
+        <h3 class="text-xl font-black text-gray-900">Díky za podporu!</h3>
+        <p class="text-sm text-brand-400 font-bold">+1 XP připsáno do profilu</p>
+      </div>
+    </div>
+
+    <!-- Luxusní full-screen úvodní obrazovka -->
+    <div id="screen-auth" class="absolute inset-0 z-40 bg-slate-50 px-6 py-10 flex flex-col items-center justify-between overflow-y-auto">
+      <div class="my-auto w-full max-w-md space-y-8">
+        <div class="text-center">
+          <div class="w-28 h-28 mx-auto rounded-full bg-blue-50 flex items-center justify-center">
+            <i class="fa-solid fa-location-dot text-blue-600 text-6xl"></i>
+          </div>
+          <h1 class="mt-5 text-4xl font-black tracking-tight"><span class="text-gray-900">VŠB</span> <span class="text-blue-600">UniGO</span></h1>
+          <p class="mt-1.5 text-sm font-medium text-gray-500">Kampus, ve kterém se neztratíš.</p>
+        </div>
+
+        <div class="bg-white p-8 rounded-3xl shadow-xl">
+          <h2 class="text-3xl font-black text-gray-900">Ahoj!</h2>
+          <p class="text-sm text-gray-500 mb-6">Zadej přezdívku a vyber svou fakultu.</p>
+          <div class="space-y-5">
+            <div class="space-y-2">
+              <label for="auth-name" class="block text-xs font-bold text-blue-600 uppercase tracking-widest">Přezdívka</label>
+              <input type="text" id="auth-name" placeholder="Tvoje přezdívka" class="ug-auth-field w-full px-4 py-3.5 bg-slate-100 border-none rounded-xl text-sm font-semibold text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 transition">
+            </div>
+            <div class="space-y-2">
+              <label for="auth-faculty" class="block text-xs font-bold text-blue-600 uppercase tracking-widest">Fakulta</label>
+              <select id="auth-faculty" class="ug-auth-field w-full px-4 py-3.5 bg-slate-100 border-none rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer">
+                <option value="FEI">FEI – Fakulta elektrotechniky a informatiky</option>
+                <option value="FBI">FBI – Fakulta bezpečnostního inženýrství</option>
+                <option value="FAST">FAST – Fakulta stavební</option>
+                <option value="EKF">EKF – Ekonomická fakulta</option>
+                <option value="HGF">HGF – Hornicko-geologická fakulta</option>
+                <option value="FMT">FMT – Fakulta materiálově-technologická</option>
+                <option value="FS">FS – Fakulta strojní</option>
+              </select>
+            </div>
+            <button onclick="playBeep(); handleLogin()" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-600/25 transition active:scale-[.98] text-base">Vstoupit do kampusu</button>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 font-medium text-center">@vsb.unigo</p>
+    </div>
+
+    <!-- HLAVNÍ APLIKACE -->
+    <div id="screen-main" class="flex flex-col h-full w-full hidden">
+      
+      <!-- HORNÍ LIŠTA -->
+      <header class="px-5 py-3.5 border-b border-gray-100 bg-white backdrop-blur-xl flex items-center justify-between z-40 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="ug-logo-pill" aria-label="VŠB UniGO" style="box-shadow:none;padding:0;gap:10px"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAACc1BMVEX////+///+/v/9/f/7/P/8/f/6+//y9v7u8/3t8v3x9f78/P/2+f7N2/qbt/ZymvJUhe9Adu02b+0ybOwxa+w1b+xVhe91nPKeuvbM2/r3+f6/0fl0nPI7c+0eXuoVWOoXWeobXOofXuohYOsiYesWWOp3nfLE1fr9/v+kvvdGe+4aW+ogX+smZOspZusoZesnZesWWepIfO61yvhCd+4dXuolY+sdXepCeO62y/jp7/1kkPEnZOtmkfHq8P0vauwwa+zB0/mdufYgYOscXeqgu/aNrfUUV+mQsPWSsfWWtPWsxPexx/jT3/skYusjYuskY+vX4vtDeO6GqPTZ5PwjYesmY+vf6Pxpk/FwmfLU4Pva5fx6oPMYWup8ovOpwfe+0fl9ovOCpvTw9f40buw6cu32+P62yvh1nfKBpfN/pPNFeu4ZWupgjfBNgO/i6vwqZuvk7P0uauzp8P3D1PmnwPfM2voYWeqyyPg4ce309/6at/aHqfRRgu9Qgu+MrfRaifCIqvSNrfSYtfY5ce31+P6YtfWqwvfO3Pqrw/eBpPMsaOzn7v3g6fz5+/4/de0fX+pmkvGJq/R8ofOeufa8z/nY4/tMf+8ZW+pHfO7G1vqFqPSTsfWVs/Xh6vxnkvFqlPEcXOrH1/pWhvBZiPDA0vnD1PpbivDQ3fvU4ft5n/Pv9P4zbew3cO3z9v6vxvhlkfFslvHs8f24zPh/o/MVV+lUhO8rZ+zo7v27zvmRsPVrlfEVV+o0bezw9P7S3/vb5fyXtfWivfd+o/OApPNjj/Fij/H6/P9He+7m7f0gX+oybeyowfdSg+9ThO/l7f2mv/dCwYF2AAAFMklEQVR42u1Z+XfUVBS+k+ThWqVURW07yXQaG8jkvbSlGcCgQEdGtE4L2OI2QsWtWBRUqCAIKggKQkGxFRX3fd9R675U3P8kk6FDJ8m0zQ/vZY6e9/3QmdM3Z+439353eTcAHBwcHBwcHBwcHBwc/2nEBAexytgWRAkJY2+RJAoRm0eo8DLtlFNPO31a6X8iQewM58+ZVWedPb16Rs0551afN/P8Cy50OUQUDOenxmrr6uOykmhINjYmGxKKGq+/qOnEEXNoIqBZs3UlZWBiGgWYBBup5kTLLASixtq+BNA6R24jxLA8MIiZVufOK3yArf35FytxbFtlYOO4suASpgxiCGovVUhZ8wUKRFm4iKEWBQ0WJ5LYmgS4PXMZaKwYaLAka9jWpDCN7OUgsrGPYGnWr70gDJK9gk06SnClak5p32FgKx0slIjgqsZcCPuOFDu7ltH3gQDS8gwJY9+ySKJFANrdSYIVWRzOvpML2SW0gyDC1d1hzVtWT5exEugWZQTXKMEA2ISYJimTGbj5WroqEOG6diNoPq6quq6qDWVqY+56qi5AcIPqVwCJ5+fcuGr16lW91fm43ztYvommCgRYc3PS5wGiLG8d87LUOtcfHyN1y60UEwHBbXnit1+H3DnMhfNa52dA9FqKKkBwu88AUfpKWr/zps//AXUtTRlqd8Q9OiP969zeOH4eg3X9HgZ25k6K5uEunOspjXDn+g3e34dgw/rOUpUY3XffQ00ECO5NmF7/9vo1LkGv6nGBEa+i1pYRbPR+ud22yf/lImxq80Zp4D5qIpBgqVxaBYz2zVv87hVgy2ZPrcLy/dQqgQRbPQTMxDYITF0xeMATJyxvZ0dA3xGssxrs0L0EHqRI4KGABwICj8E2hh542KuB1M5dQQ3s2unTwCPUCCDY3exLsT3BLNgT93QLojxKLQvK1IG+YB14zJeqiSZqBDRYaec8Hujeu8/rAhH27e0u9UBPznyc2kQQg/0HBr3+zR8ErbQXaHDQ2y+NwQP7gdoNSYQFeX83POTthof83dChSO+CJMFi2TcQmQO97oE7Drg8nlBM7zmWn6Q4EmmwrNHygSgth4vnh1uCE2v3U3Tn4qGMf/Ak6eGnV3QcOdLxzOzhtN8+1XGgEINn5cC1xDbTspLJKHKbGZiKsfwc1auJk4hGlxWAjYltk3L7khw5SjcCCJ7Ph7wZFsIz8ALl6ymCpoQZnoD94ku078cCvKyHdgHRX6F8NXRd8Gp4AmbiNfoLAg1eHw67H3CGdvoLSwRvDIZakDiNKPkmiz0VgrfkUCsKLK9lsq0U4O13kiF8YKfefY/6gqYACd5vDqECMtDKal0rwgfKlEHA6ofMtvYafFSTnGJTaqdmrGGQAieD8PFUBdnWa1nuyxF88unky+rsVqb7ekfcQ5MVRNz/GbDJgHEXHP28ceLnBe0Lj7FalRchwRf6RAQMI93E+pGNy+DLiXa2OEvvRj4JNPhKLcsAj8xk7f8xAtqQXoYBzk9nLMAiEMz/ejCQCiRd/00kDy7BlcG3uU6fEu0k/i4KARQZzNPtHk8CWOlF0dl3GXyf9QSBqD9Ead9tjD+W1mSc/Smq+I/BUfvPzScZYPWXiBJgHBqM/lpMRqy3jLJrwRMBwfGa3wp3FXPw92MRB6AACaqSXc6MaHQlq6IVYBGjsNtdCxDlj8rYL4wnIxiPRJ0A43B0/2c6/VfkCVDqgr9NcrxiDgBXiP9srJQATkCooP/HGFTYPgcHBwcHBwcHBwcHx/8A/wKEnjYGUrwmbwAAAABJRU5ErkJggg==" alt="UniGO" class="ug-logo-mark"><span class="ug-logo-text">VŠB <b>UniGO</b></span></div>
+          <div>
+            <p id="header-faculty" class="text-[10px] font-black text-brand-500 uppercase tracking-widest">FEI • VŠB-TUO</p>
+            <h2 id="header-username" class="text-sm font-bold text-gray-900">Uživatel</h2>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="playBeep(); switchTab('profile')" class="px-3.5 py-1.5 rounded-xl bg-gray-100/90 border border-gray-200/60 text-brand-500 font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition">
+            <i class="fa-solid fa-bolt text-[11px]"></i> <span id="user-xp">0</span> XP
+          </button>
+        </div>
+      </header>
+
+      <!-- OBSAH ZÁLOŽEK -->
+      <main class="flex-1 relative bg-gray-50 w-full overflow-hidden flex flex-col">
+        
+        <!-- ZÁLOŽKA 1: MAPA -->
+        <div id="tab-map" class="tab-content absolute inset-0 w-full h-full flex flex-col">
+          <div id="leaflet-map" class="w-full h-full absolute inset-0" style="z-index: 10; background: #f3f4f6;"></div>
+
+          <div id="campus-toolbar">
+            <button class="campus-open" onclick="ugToggleSheet(true)" aria-label="Vybrat cíl v kampusu"><i class="fa-solid fa-magnifying-glass"></i><span><strong id="campus-selected">Kam to bude?</strong><small>Budovy a místa v kampusu</small></span><i class="fa-solid fa-chevron-down"></i></button>
+            <div id="building-chips" hidden></div>
+          </div>
+
+          <!-- HUD Navigace (Garantovaná kampusová trasa) -->
+          <div id="navigation-hud" class="absolute bottom-5 left-3 right-20 max-w-md bg-white rounded-full shadow-md border border-gray-100 pl-6 pr-2 py-2 hidden z-[32] pointer-events-auto flex items-center gap-3">
+            <button onclick="playBeep(); stopNav()" class="w-8 h-8 shrink-0 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center" title="Ukončit"><i class="fa-solid fa-xmark text-xs"></i></button>
+            <div class="flex-1 min-w-0">
+              <h3 id="hud-dest" class="text-base font-bold text-gray-900 truncate leading-tight">Cíl</h3>
+              <p id="hud-dist" class="text-sm text-gray-500 truncate">Výpočet trasy...</p>
+              <p id="hud-info" class="hidden"></p>
+            </div>
+            <button onclick="playBeep(); centerGPS()" class="w-14 h-14 shrink-0 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 flex items-center justify-center text-lg active:scale-95 transition" title="Sledovat trasu"><i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+
+          <!-- GPS & Srdíčko -->
+          <div class="absolute bottom-5 right-4 flex flex-col gap-3 z-30 pointer-events-auto">
+            <button onclick="playBeep(); centerGPS()" class="w-12 h-12 bg-white backdrop-blur-md border border-gray-100 text-brand-500 rounded-2xl shadow-lg flex items-center justify-center text-lg active:scale-95 transition" title="Moje poloha">
+              <i class="fa-solid fa-location-crosshairs"></i>
+            </button>
+            <button onclick="playBeep(); clickHeart()" class="w-14 h-14 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/40 flex items-center justify-center text-xl transition active:scale-95" title="Dát srdíčko (+1 XP)">
+              <i class="fa-solid fa-heart"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- ZÁLOŽKA 2: QUESTY & KVÍZ -->
+        <div id="tab-quests" class="tab-content absolute inset-0 p-4 hidden bg-gray-50 overflow-y-auto space-y-4">
+          <div class="bg-gradient-to-br from-zinc-900 to-zinc-900/60 border border-gray-100 p-5 rounded-3xl shadow-md">
+            <p class="text-xs uppercase tracking-wider text-brand-500 font-bold">Kampusový Pokrok</p>
+            <div class="flex justify-between items-end mt-1">
+              <h2 id="quest-xp" class="text-2xl font-black tracking-tight text-gray-900">0 XP</h2>
+              <span class="bg-brand-500/15 text-brand-400 border border-brand-500/30 text-xs font-bold px-3 py-1 rounded-full">Inženýrský start</span>
+            </div>
+            <div class="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mt-3.5">
+              <div id="quest-bar" class="bg-gradient-to-r from-brand-500 to-teal-400 h-full rounded-full transition-all duration-500" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Kvíz -->
+          <div class="bg-white/90 border border-gray-100 p-5 rounded-3xl shadow-md space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[10px] uppercase font-black tracking-wider text-brand-500"><i class="fa-solid fa-brain"></i> Vědomostní výzva</span>
+                <h3 class="text-base font-bold text-gray-900">Poznej VŠB</h3>
+              </div>
+              <div class="flex gap-1.5">
+                <button onclick="playBeep(); setQuizLevel('easy')" id="q-btn-easy" class="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-brand-500 text-white transition">Lehké</button>
+                <button onclick="playBeep(); setQuizLevel('medium')" id="q-btn-medium" class="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-gray-100 text-gray-500 transition">Střední</button>
+                <button onclick="playBeep(); setQuizLevel('hard')" id="q-btn-hard" class="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-gray-100 text-gray-500 transition">Pokročilé</button>
+              </div>
+            </div>
+
+            <div id="quiz-card" class="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3">
+              <div class="flex justify-between text-xs text-gray-500 font-semibold">
+                <span id="quiz-progress-text">Otázka 1 / 5</span>
+                <span id="quiz-level-badge" class="text-brand-400 font-bold uppercase">Lehká úroveň</span>
+              </div>
+              <p id="quiz-question" class="text-sm font-bold text-gray-800">Načítám otázku...</p>
+              <div id="quiz-options" class="grid grid-cols-1 gap-2"></div>
+              <p id="quiz-feedback" class="text-xs font-bold text-center mt-2 hidden"></p>
+            </div>
+          </div>
+
+          <h3 class="text-xs font-bold uppercase tracking-wider text-gray-500 px-1 pt-1">Navigační Questy kampusu</h3>
+          
+          <div class="space-y-3">
+            <div id="quest-item-faculty" class="p-4 bg-white border border-gray-100 rounded-3xl flex items-center justify-between shadow-sm">
+              <div class="space-y-0.5">
+                <h4 id="faculty-quest-title" class="text-sm font-bold text-gray-900">🏛️ Návštěva tvé fakulty</h4>
+                <p class="text-xs text-gray-500">Zobrazit trasu (+150 XP)</p>
+              </div>
+              <button id="faculty-quest-btn" onclick="playBeep(); startFacultyQuest()" class="px-3.5 py-2 bg-brand-500 hover:bg-brand-600 text-white font-black text-xs rounded-2xl shadow-md transition">Splnit</button>
+            </div>
+
+            <div id="quest-item-knihovna" class="p-4 bg-white border border-gray-100 rounded-3xl flex items-center justify-between shadow-sm">
+              <div class="space-y-0.5">
+                <h4 class="text-sm font-bold text-gray-900">📚 Cesta za věděním</h4>
+                <p id="quest-desc-knihovna" class="text-xs text-gray-500">Zobrazit trasu do knihovny (+120 XP)</p>
+              </div>
+              <button id="btn-claim-lib" onclick="playBeep(); startNavQuest('knihovna', 120, 'quest-item-knihovna', 'quest-desc-knihovna', 'btn-claim-lib')" class="px-3.5 py-2 bg-brand-500 hover:bg-brand-600 text-white font-black text-xs rounded-2xl shadow-md transition">Splnit</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ZÁLOŽKA 3: ARKÁDOVÉ HRY -->
+        <div id="tab-game" class="tab-content absolute inset-0 p-4 hidden bg-gray-50 overflow-y-auto space-y-4">
+          <div class="text-center pt-2">
+            <h2 class="text-2xl font-black tracking-tight text-gray-900 flex items-center justify-center gap-2 font-arcade text-blue-600 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">VŠB ARKÁDY</h2>
+            <p class="text-xs text-gray-500 mt-1 font-semibold tracking-wider">ŽIVÉ NEONOVÉ HRY PRO INŽENÝRY</p>
+          </div>
+
+          <div class="flex bg-white p-1.5 rounded-2xl border border-gray-100 max-w-sm mx-auto w-full overflow-x-auto no-scrollbar shadow-inner">
+            <button onclick="playBeep(); switchGame('snake')" id="btn-game-snake" class="px-3.5 py-2 text-xs font-bold rounded-xl bg-blue-600 text-white transition whitespace-nowrap shadow-sm">Had</button>
+            <button onclick="playBeep(); switchGame('tetris')" id="btn-game-tetris" class="px-3.5 py-2 text-xs font-bold rounded-xl text-gray-500 transition whitespace-nowrap">Tetris</button>
+            <button onclick="playBeep(); switchGame('pexeso')" id="btn-game-pexeso" class="px-3.5 py-2 text-xs font-bold rounded-xl text-gray-500 transition whitespace-nowrap">Pexeso</button>
+            <button onclick="playBeep(); switchGame('breakout')" id="btn-game-breakout" class="px-3.5 py-2 text-xs font-bold rounded-xl text-gray-500 transition whitespace-nowrap">Breakout</button>
+            <button onclick="playBeep(); switchGame('rocket')" id="btn-game-rocket" class="px-3.5 py-2 text-xs font-bold rounded-xl text-gray-500 transition whitespace-nowrap">Raketka</button>
+          </div>
+
+          <!-- 1. HAD -->
+          <div id="game-container-snake" class="game-box flex flex-col items-center space-y-3">
+            <div class="flex gap-4 bg-white/90 px-5 py-2 rounded-2xl border border-blue-600/40 text-xs font-bold shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+              <span>Skóre: <span id="snake-score" class="text-blue-600 font-black">0</span></span>
+              <span>•</span>
+              <span>High: <span id="snake-highscore" class="text-amber-400 font-black">0</span></span>
+            </div>
+            <div class="arcade-cabinet rounded-3xl p-3 border-blue-600/50 shadow-[0_0_35px_rgba(16,185,129,0.3)]">
+              <canvas id="snakeCanvas" width="280" height="280" class="rounded-2xl bg-black block border border-blue-600/40"></canvas>
+            </div>
+            <div class="grid grid-cols-3 gap-2 w-full max-w-[220px]">
+              <div></div>
+              <button onclick="playBeep(); changeSnakeDir('UP')" class="p-3 bg-white border border-blue-600/40 text-blue-600 rounded-xl active:bg-blue-600 active:text-white transition font-black text-lg shadow-md"><i class="fa-solid fa-arrow-up"></i></button>
+              <div></div>
+              <button onclick="playBeep(); changeSnakeDir('LEFT')" class="p-3 bg-white border border-blue-600/40 text-blue-600 rounded-xl active:bg-blue-600 active:text-white transition font-black text-lg shadow-md"><i class="fa-solid fa-arrow-left"></i></button>
+              <button onclick="playBeep(); changeSnakeDir('DOWN')" class="p-3 bg-white border border-blue-600/40 text-blue-600 rounded-xl active:bg-blue-600 active:text-white transition font-black text-lg shadow-md"><i class="fa-solid fa-arrow-down"></i></button>
+              <button onclick="playBeep(); changeSnakeDir('RIGHT')" class="p-3 bg-white border border-blue-600/40 text-blue-600 rounded-xl active:bg-blue-600 active:text-white transition font-black text-lg shadow-md"><i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            <button onclick="playBeep(); startSnakeGame()" id="snake-start-btn" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/40 transition">START HADA</button>
+          </div>
+
+          <!-- 2. TETRIS -->
+          <div id="game-container-tetris" class="game-box flex flex-col items-center space-y-3 hidden">
+            <div class="flex gap-4 bg-white/90 px-5 py-2 rounded-2xl border border-cyan-500/40 text-xs font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+              <span>Skóre: <span id="tetris-score" class="text-cyan-400 font-black">0</span></span>
+            </div>
+            <div class="arcade-cabinet rounded-3xl p-3 border-cyan-500/50 shadow-[0_0_35px_rgba(6,182,212,0.3)]">
+              <canvas id="tetrisCanvas" width="200" height="300" class="rounded-2xl bg-black block border border-cyan-500/40"></canvas>
+            </div>
+            <div class="flex gap-2 w-full max-w-[240px]">
+              <button onclick="playBeep(); tetrisMove(-1)" class="flex-1 py-3 bg-white border border-cyan-500/40 text-cyan-400 rounded-xl active:bg-cyan-500 active:text-white font-black text-xs shadow-md">◄ VLEVO</button>
+              <button onclick="playBeep(); tetrisRotate()" class="flex-1 py-3 bg-white border border-cyan-500/40 text-cyan-400 rounded-xl active:bg-cyan-500 active:text-white font-black text-xs shadow-md">↻ OTOČIT</button>
+              <button onclick="playBeep(); tetrisMove(1)" class="flex-1 py-3 bg-white border border-cyan-500/40 text-cyan-400 rounded-xl active:bg-cyan-500 active:text-white font-black text-xs shadow-md">VPRAVO ►</button>
+            </div>
+            <button onclick="playBeep(); tetrisDrop()" class="w-full py-3 bg-cyan-500 text-white rounded-xl active:bg-cyan-600 font-black text-xs shadow-md">▼▼ SHODIT DOLŮ</button>
+            <button onclick="playBeep(); startTetrisGame()" id="tetris-start-btn" class="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-black text-xs rounded-xl shadow-lg shadow-cyan-500/40 transition">START TETRISU</button>
+          </div>
+
+          <!-- 3. PEXESO -->
+          <div id="game-container-pexeso" class="game-box flex flex-col items-center space-y-3 hidden">
+            <div class="flex gap-4 bg-white/90 px-5 py-2 rounded-2xl border border-pink-500/40 text-xs font-bold shadow-[0_0_15px_rgba(236,72,153,0.3)]">
+              <span>Nalezené páry: <span id="pexeso-matches" class="text-pink-400 font-black">0</span> / 4</span>
+            </div>
+            <div class="arcade-cabinet rounded-3xl p-4 border-pink-500/50 shadow-[0_0_35px_rgba(236,72,153,0.3)]">
+              <div id="pexeso-grid" class="grid grid-cols-4 gap-2.5 w-[260px] h-[260px]"></div>
+            </div>
+            <button onclick="playBeep(); startPexesoGame()" class="px-6 py-2.5 bg-pink-500 hover:bg-pink-400 text-white font-black text-xs rounded-xl shadow-lg shadow-pink-500/40 transition mt-2">NOVÉ PEXESO</button>
+          </div>
+
+          <!-- 4. BREAKOUT -->
+          <div id="game-container-breakout" class="game-box flex flex-col items-center space-y-3 hidden">
+            <div class="flex gap-4 bg-white/90 px-5 py-2 rounded-2xl border border-amber-500/40 text-xs font-bold shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+              <span>Skóre: <span id="breakout-score" class="text-amber-400 font-black">0</span></span>
+            </div>
+            <div class="arcade-cabinet rounded-3xl p-3 border-amber-500/50 shadow-[0_0_35px_rgba(245,158,11,0.3)]">
+              <canvas id="breakoutCanvas" width="280" height="280" class="rounded-2xl bg-black block border border-amber-500/40"></canvas>
+            </div>
+            <div class="flex gap-3 w-full max-w-[240px]">
+              <button ontouchstart="breakoutMove(-1)" onmousedown="breakoutMove(-1)" class="flex-1 py-3 bg-white border border-amber-500/40 text-amber-400 rounded-xl active:bg-amber-500 active:text-white font-black text-xs shadow-md">◄ VLEVO</button>
+              <button ontouchstart="breakoutMove(1)" onmousedown="breakoutMove(1)" class="flex-1 py-3 bg-white border border-amber-500/40 text-amber-400 rounded-xl active:bg-amber-500 active:text-white font-black text-xs shadow-md">VPRAVO ►</button>
+            </div>
+            <button onclick="playBeep(); startBreakoutGame()" id="breakout-start-btn" class="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-white font-black text-xs rounded-xl shadow-lg shadow-amber-500/40 transition">START BREAKOUTU</button>
+          </div>
+
+          <!-- 5. RAKETKA -->
+          <div id="game-container-rocket" class="game-box flex flex-col items-center space-y-3 hidden">
+            <div class="flex gap-4 bg-white/90 px-5 py-2 rounded-2xl border border-rose-500/40 text-xs font-bold shadow-[0_0_15px_rgba(244,63,94,0.3)]">
+              <span>Zásahy: <span id="rocket-score" class="text-rose-400 font-black">0</span></span>
+            </div>
+            <div class="arcade-cabinet rounded-3xl p-3 border-rose-500/50 shadow-[0_0_35px_rgba(244,63,94,0.3)]">
+              <canvas id="rocketCanvas" width="280" height="280" class="rounded-2xl bg-black block border border-rose-500/40"></canvas>
+            </div>
+            <div class="flex gap-2 w-full max-w-[240px]">
+              <button onclick="playBeep(); rocketMove(-15)" class="flex-1 py-3 bg-white border border-rose-500/40 text-rose-400 rounded-xl active:bg-rose-500 active:text-white font-black text-xs shadow-md">◄ UHNOUT</button>
+              <button onclick="playBeep(); rocketShoot()" class="flex-1 py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-gray-900 rounded-xl active:scale-95 font-black text-xs shadow-lg">⚡ PAL!</button>
+              <button onclick="playBeep(); rocketMove(15)" class="flex-1 py-3 bg-white border border-rose-500/40 text-rose-400 rounded-xl active:bg-rose-500 active:text-white font-black text-xs shadow-md">UHNOUT ►</button>
+            </div>
+            <button onclick="playBeep(); startRocketGame()" id="rocket-start-btn" class="px-6 py-2.5 bg-rose-500 hover:bg-rose-400 text-white font-black text-xs rounded-xl shadow-lg shadow-rose-500/40 transition">START RAKETKY</button>
+          </div>
+        </div>
+
+        <!-- ZÁLOŽKA 4: PROFIL -->
+        <div id="tab-sluzby" class="tab-content absolute inset-0 p-4 hidden bg-gray-50 overflow-y-auto space-y-4">
+          <h2 class="text-2xl font-bold text-gray-900 px-1 pt-1">Služby</h2>
+          <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-11 h-11 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg"><i class="fa-solid fa-newspaper"></i></div>
+              <div><h3 class="text-base font-bold text-gray-900">Aktuality</h3><p class="text-xs text-gray-500">Magazín Akademik</p></div>
+            </div>
+            <div id="sluzby-news" class="space-y-3"><p class="campus-note" style="margin:0">Načítám aktuality…</p></div>
+            <a class="campus-service-link" href="https://www.vsb.cz/magazin/cs/" target="_blank" rel="noopener">Všechny aktuality <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          </div>
+          <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg"><i class="fa-solid fa-utensils"></i></div>
+              <div><h3 class="text-base font-bold text-gray-900">Menza</h3><p class="text-xs text-gray-500">Dnešní menu</p></div>
+            </div>
+            <div class="campus-service-actions"><span id="menu-updated">Načítám dnešní nabídku…</span><button onclick="refreshCampusMenu()" class="campus-icon-button" aria-label="Obnovit menu" title="Obnovit menu"><i class="fa-solid fa-rotate-right"></i></button></div>
+            <div id="sluzby-menu" class="campus-service-menu" aria-live="polite">Načítám dnešní menu…</div>
+            <p class="campus-note">Ceny dle veřejného jídelníčku; cena po přihlášení se může lišit.</p>
+            <a class="campus-service-link" href="https://stravovani.vsb.cz/webkredit/Ordering/Menu" target="_blank" rel="noopener">Jídelníček na WebKreditu <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+            <button class="campus-service-link campus-service-nav" onclick="playBeep(); switchTab('map'); startNav(49.83482, 18.16310, 'Menza')">Navigovat k Menze <i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+          <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg"><i class="fa-solid fa-train-tram"></i></div>
+              <div><h3 class="text-base font-bold text-gray-900">Spoje</h3><p class="text-xs text-gray-500">Zastávka VŠB-TUO</p></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+              <div class="ug-board-wrap"><div style="font-size:11px;font-weight:800;color:#111827;margin:0 4px 4px">Směr Svinov mosty</div><div class="ug-board" data-stop="tram-svinov"></div></div>
+              <div class="ug-board-wrap"><div style="font-size:11px;font-weight:800;color:#111827;margin:0 4px 4px">Směr Poruba / Vřesinská</div><div class="ug-board" data-stop="tram-poruba"></div></div>
+            </div>
+            <p class="campus-note">Odjezdy jsou orientační – přesné časy ověř v IDOS nebo na DPO pro zastávku VŠB-TUO.</p>
+            <a class="campus-service-link" href="https://dashboard.dpo.cz/apps/departures?lang=cs" target="_blank" rel="noopener">Aktuální odjezdy DPO <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+            <a class="campus-service-link campus-service-link-secondary" href="https://idos.cz/ostrava/spojeni/?f=V%C5%A0B-TUO" target="_blank" rel="noopener">Vyhledat spoj v IDOS <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          </div>
+        </div>
+
+        <div id="tab-profile" class="tab-content absolute inset-0 p-4 hidden bg-gray-50 overflow-y-auto space-y-4">
+          <div class="px-1">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900">Můj Profil</h2>
+            <p class="text-xs text-gray-500">Osobní statistiky a nastavení fakulty</p>
+          </div>
+
+          <div class="p-5 bg-white/90 border border-gray-100 rounded-3xl flex items-center gap-4 shadow-sm">
+            <div class="w-16 h-16 bg-brand-500/20 border border-brand-500/40 text-brand-500 rounded-2xl flex items-center justify-center text-2xl font-black shadow-inner">
+              <i class="fa-solid fa-user-graduate"></i>
+            </div>
+            <div class="overflow-hidden">
+              <h3 id="profile-name" class="text-base font-bold text-gray-900 truncate">Uživatel</h3>
+              <p id="profile-faculty" class="inline-block mt-1.5 px-3 py-0.5 bg-brand-500/20 border border-brand-500/40 text-brand-400 text-[10px] font-black rounded-full">FEI • VŠB-TUO</p>
+            </div>
+          </div>
+
+          <div class="p-5 bg-white/90 border border-gray-100 rounded-3xl space-y-3 shadow-sm">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-600">Změnit barvu podle fakulty (přesný vizuál)</h4>
+            <select id="profile-faculty-select" onchange="changeAppFaculty(this.value)" class="w-full px-4 py-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm font-black text-brand-400 focus:outline-none cursor-pointer">
+              <option value="FEI">FEI – Fakulta elektrotechniky a informatiky (#00A9CE)</option>
+              <option value="FBI">FBI – Fakulta bezpečnostního inženýrství (#F0821E)</option>
+              <option value="FAST">FAST – Fakulta stavební (#7D4E9E)</option>
+              <option value="EKF">EKF – Ekonomická fakulta (#1E4D9B)</option>
+              <option value="HGF">HGF – Hornicko-geologická fakulta (#3FA34D)</option>
+              <option value="FMT">FMT – Fakulta materiálově-technologická (#E1251B)</option>
+              <option value="FS">FS – Fakulta strojní (#F2B71B)</option>
+            </select>
+            <p class="text-[11px] text-gray-500">Okamžitě přebarví celou aplikaci včetně tlačítek a mapy.</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3">
+            <div class="p-4 bg-white border border-gray-100 rounded-3xl text-center space-y-1">
+              <span class="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Celkově získané XP</span>
+              <h4 id="profile-xp" class="text-2xl font-black text-brand-400">0 XP</h4>
+            </div>
+          </div>
+
+          <button onclick="playBeep(); handleLogout()" class="w-full py-3.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold rounded-2xl text-xs transition mt-4 shadow-sm">
+            Odhlásit se ze systému
+          </button>
+        </div>
+
+      </main>
+
+      <!-- SPODNÍ NAVIGACE -->
+      <nav class="bg-white border-t border-gray-100 backdrop-blur-xl px-6 py-2.5 flex justify-between items-center z-40 shrink-0">
+        <button onclick="playBeep(); switchTab('map')" id="nav-btn-map" class="flex flex-col items-center text-brand-500 transition gap-0.5"><i class="fa-solid fa-map text-base"></i><span class="text-[10px] font-medium">Mapa</span></button>
+        <button onclick="playBeep(); switchTab('quests')" id="nav-btn-quests" class="flex flex-col items-center text-gray-500 hover:text-gray-800 transition gap-0.5"><i class="fa-solid fa-trophy text-base"></i><span class="text-[10px] font-medium">Questy</span></button>
+        <button onclick="playBeep(); switchTab('game')" id="nav-btn-game" class="flex flex-col items-center text-gray-500 hover:text-gray-800 transition gap-0.5"><i class="fa-solid fa-gamepad text-base"></i><span class="text-[10px] font-medium">Hry</span></button>
+        <button onclick="playBeep(); switchTab('sluzby')" id="nav-btn-sluzby" class="flex flex-col items-center text-gray-500 hover:text-gray-800 transition gap-0.5"><i class="fa-solid fa-store text-base"></i><span class="text-[10px] font-medium">Služby</span></button>
+        <button onclick="playBeep(); switchTab('profile')" id="nav-btn-profile" class="flex flex-col items-center text-gray-500 hover:text-gray-800 transition gap-0.5"><i class="fa-solid fa-user text-base"></i><span class="text-[10px] font-medium">Profil</span></button>
+      </nav>
+    </div>
+
+  </div>
+
+  <script>// Budovy areálu VŠB-TUO podle oficiální mapy (vsb.cz → Mapy areálů) a polygonů OpenStreetMap.
+// faculties = fakulty, které v budově mají většinu výuky (zvýrazní se barvou fakulty).
+window.UniGOCampus = [
+  { id:'fei', name:'FEI', title:'Fakulta elektrotechniky a informatiky · budovy EA, EB, EC', codes:'EA EB EC FEI POREL', category:'faculties', lat:49.83165, lng:18.16097, deans:['FEI'], faculties:['FEI'] },
+  { id:'ekf', name:'EKF', title:'Ekonomická fakulta · děkanát, učebny, EKaFé', codes:'EKF', category:'faculties', lat:49.83280, lng:18.16190, deans:['EKF'], faculties:['EKF'] },
+  { id:'a', name:'A', title:'Rektorát · děkanáty HGF, FMT, FS, studijní oddělení, kartové centrum', codes:'A rektorat HGF FMT FS', category:'faculties', lat:49.83336, lng:18.16375, deans:['HGF','FMT','FS'], faculties:['HGF','FMT','FS'] },
+  { id:'fast', name:'FAST', title:'Fakulta stavební · Ludvíka Podéště 1875/17 (mimo hlavní kampus)', codes:'FAST stavebni', category:'faculties', lat:49.84534, lng:18.15295, deans:['FAST'], faculties:['FAST'] },
+  { id:'fbi', name:'FBI', title:'Fakulta bezpečnostního inženýrství · Lumírova 630/13, Výškovice', codes:'FBI bezpecnostni', category:'faculties', lat:49.77760, lng:18.21878, deans:['FBI'], faculties:['FBI'] },
+
+  { id:'b', name:'B', title:'Posluchárny B1–B6 · kariérní centrum, PhD akademie', codes:'B1 B2 B3 B4 B5 B6', category:'teaching', lat:49.83372, lng:18.16347, faculties:['FEI','HGF','FMT','FS','EKF'] },
+  { id:'c', name:'C', title:'Posluchárny C1–C5 · bufet Kruhovka', codes:'C1 C2 C3 C4 C5 kruhovka', category:'teaching', lat:49.83393, lng:18.16265, faculties:['FEI','HGF','FMT','FS'] },
+  { id:'d', name:'D', title:'Učebny', codes:'D', category:'teaching', lat:49.83232, lng:18.16319, faculties:['HGF','FS','EKF'] },
+  { id:'e', name:'E', title:'Učebny a laboratoře', codes:'E', category:'teaching', lat:49.83210, lng:18.16242, faculties:['HGF','FS'] },
+  { id:'f', name:'F', title:'Učebny a laboratoře', codes:'F', category:'teaching', lat:49.83256, lng:18.16270, faculties:['HGF','FS'] },
+  { id:'g', name:'G', title:'Učebny a laboratoře', codes:'G', category:'teaching', lat:49.83303, lng:18.16292, faculties:['HGF','FS'] },
+  { id:'h', name:'H', title:'Učebny a laboratoře', codes:'H', category:'teaching', lat:49.83270, lng:18.16215, faculties:['EKF','HGF'] },
+  { id:'j', name:'J', title:'Učebny a laboratoře · centrum celoživotního vzdělávání', codes:'J', category:'teaching', lat:49.83439, lng:18.16476, faculties:['FMT','FS'] },
+  { id:'k', name:'K', title:'Učebny a laboratoře', codes:'K', category:'teaching', lat:49.83440, lng:18.16402, faculties:['FMT','FS'] },
+  { id:'n', name:'N', title:'Centrum nanotechnologií · učebny a laboratoře', codes:'N nanotechnologie', category:'teaching', lat:49.83146, lng:18.15858, faculties:['FEI','FMT'] },
+  { id:'l', name:'L', title:'Těžké laboratoře', codes:'L', category:'teaching', lat:49.83358, lng:18.15889, faculties:['FS','FMT'] },
+  { id:'gp', name:'GP', title:'Geologický pavilon', codes:'GP geologie', category:'teaching', lat:49.83198, lng:18.16366, faculties:['HGF'] },
+  { id:'tl3', name:'TL3', title:'Testbed CPIT · učebny a laboratoře', codes:'TL3', category:'teaching', lat:49.83601, lng:18.16209, faculties:['FS'] },
+  { id:'tl4', name:'TL4', title:'Učebny a laboratoře', codes:'TL4', category:'teaching', lat:49.83568, lng:18.16262, faculties:['FS'] },
+  { id:'ua', name:'UA', title:'Univerzitní aula · posluchárny, CIT', codes:'UA aula CIT', category:'teaching', lat:49.83091, lng:18.16286, faculties:[] },
+
+  { id:'knihovna', name:'UK', title:'Ústřední knihovna · studovna', codes:'UK knihovna studovna', category:'services', lat:49.83144, lng:18.16233, faculties:[] },
+  { id:'menza', name:'Menza', title:'Menza a snackbar', codes:'M menza jidlo', category:'services', sub:'jidlo', lat:49.83482, lng:18.16310, faculties:[] },
+  { id:'koleje', name:'Koleje', title:'Studentské koleje A–E · Kolejní, Ostrava-Poruba', codes:'koleje ubytovani A B C D E', category:'services', sub:'koleje', lat:49.83710, lng:18.15790, faculties:[] },
+  { id:'hvezdarna', name:'Hvězdárna', title:'Planetárium Ostrava · hvězdárna a planetárium HGF VŠB-TUO, Krásné Pole (Po 9:30–14:00, Út 8–14, St–Pá 8–20, So 13:30–20, Ne 13:30–19)', codes:'hvezdarna planetarium planetko', category:'services', sub:'zabava', lat:49.83737, lng:18.14493, faculties:['HGF'] },
+  { id:'vrtule', name:'Vrtule', title:'Klub Vrtule · studentský klub u kolejí (Po–Čt 17:00–1:30, Pá 18–3:00, So–Ne 18–1:00)', codes:'vrtule klub diskoteka party', category:'services', sub:'zabava', lat:49.83696, lng:18.15779, faculties:[] },
+  { id:'sh', name:'SH', title:'Sportovní hala · Institut tělesné výchovy a sportu', codes:'SH sport', category:'services', lat:49.83469, lng:18.15945, faculties:[] },
+  { id:'vsh', name:'VSH', title:'Víceúčelová sportovní hala', codes:'VSH sport', category:'services', lat:49.83526, lng:18.16202, faculties:[] },
+  { id:'sn', name:'SN', title:'Studentské náměstí', codes:'SN namesti', category:'services', lat:49.83335, lng:18.16255, faculties:[] },
+  { id:'ms', name:'MS', title:'Univerzitní mateřská škola', codes:'MS skolka', category:'services', lat:49.83446, lng:18.16045, faculties:[] },
+  { id:'tram-svinov', name:'Tram', title:'Zastávka VŠB-TUO (Opavská) · směr Svinov mosty', codes:'tram tramvaj opavska svinov', category:'services', sub:'doprava', lat:49.83458, lng:18.16788 },
+  { id:'tram-poruba', name:'Tram', title:'Zastávka VŠB-TUO (17. listopadu) · směr Poruba, Vřesinská', codes:'tram tramvaj 17 listopadu poruba', category:'services', sub:'doprava', lat:49.83270, lng:18.16550 },
+
+  { id:'cpit', name:'CPIT', title:'Centrum pokročilých inovačních technologií', codes:'CPIT TL1', category:'other', lat:49.83334, lng:18.16076, faculties:['FS','FEI'] },
+  { id:'cmv', name:'CMV', title:'Centrum materiálového výzkumu', codes:'CMV', category:'other', lat:49.83348, lng:18.15999, faculties:['FMT'] },
+  { id:'ceet', name:'CEET', title:'Centrum energetických a environmentálních technologií', codes:'CEET explorer', category:'other', lat:49.83430, lng:18.16123, faculties:[] },
+  { id:'iet', name:'IET', title:'Institut environmentálních technologií', codes:'IET', category:'other', lat:49.83418, lng:18.16164, faculties:[] },
+  { id:'vec', name:'VEC', title:'Výzkumné energetické centrum', codes:'VEC VC1 VC2 VC3', category:'other', lat:49.83241, lng:18.16030, faculties:['FS','FEI'] },
+  { id:'ne', name:'NE', title:'Energoblok', codes:'NE energoblok', category:'other', lat:49.83213, lng:18.15785, faculties:[] },
+  { id:'ug', name:'UG', title:'Ústav geoniky AV ČR', codes:'UG geonika', category:'other', lat:49.83223, lng:18.15850, faculties:['HGF'] }
+];
+</script>
+  <script>// Menza + aktuality: načítá přímo z VŠB přes veřejné CORS proxy (funguje i na GitHub Pages / offline souboru).
+// Na vlastním serveru se nejdřív zkusí /api/public/*, pak proxy v pořadí.
+window.UNIGO_PROXIES = window.UNIGO_PROXIES || [
+  u => 'https://r.jina.ai/' + u,
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  u => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u),
+  u => 'https://cors.eu.org/' + u,
+  u => 'https://thingproxy.freeboard.io/fetch/' + u
+];
+const ugMenuSrc = 'https://stravovani.vsb.cz/webkredit/Api/Ordering/Rss?CanteenId=1&Days=5';
+const ugNewsSrc = 'https://www.vsb.cz/magazin/cs/';
+const ugEsc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ugText = s => { const d = document.createElement('div'); d.innerHTML = s || ''; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
+
+async function ugFetchText(url, check) {
+  for (const p of window.UNIGO_PROXIES) {
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15000);
+      const r = await fetch(p(url), { signal: ctrl.signal, headers: p(url).includes('r.jina.ai') ? { 'X-Return-Format': 'html' } : {} }); clearTimeout(t);
+      if (!r.ok) continue;
+      const txt = await r.text();
+      if (check(txt)) return txt;
+    } catch (e) { /* další proxy */ }
+  }
+  throw new Error('proxy failed');
+}
+async function ugTryApi(path) {
+  if (location.protocol === 'file:') return null;
+  try { const r = await fetch(path); if (r.ok && (r.headers.get('content-type') || '').includes('json')) return await r.json(); } catch (e) {}
+  return null;
+}
+
+function ugParseMenu(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  return [...doc.querySelectorAll('item')].map(it => {
+    const html = new DOMParser().parseFromString(it.querySelector('description')?.textContent || '', 'text/html');
+    const groups = [...html.querySelectorAll('h2')].map(h => {
+      const ul = h.nextElementSibling && h.nextElementSibling.tagName === 'UL' ? h.nextElementSibling : null;
+      return { name: ugText(h.innerHTML), items: ul ? [...ul.querySelectorAll('li')].map(li => ugText(li.innerHTML)).filter(Boolean) : [] };
+    });
+    return { date: ugText(it.querySelector('title')?.textContent), groups };
+  });
+}
+function ugParseNews(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const abs = u => !u ? '' : u.startsWith('http') ? u : 'https://www.vsb.cz' + u;
+  return [...doc.querySelectorAll('article.news-item')].slice(0, 3).map(a => ({
+    url: abs(a.querySelector('a')?.getAttribute('href')),
+    image: abs(a.querySelector('img')?.getAttribute('src')),
+    title: ugText(a.querySelector('.news-item__heading')?.innerHTML),
+    date: ugText(a.querySelector('.news-item__meta span, .news-item__meta')?.innerHTML)
+  }));
+}
+
+window.refreshCampusMenu = async function () {
+  const menu = document.getElementById('sluzby-menu');
+  const updated = document.getElementById('menu-updated');
+  if (!menu) return;
+  menu.innerHTML = '<p class="campus-note" style="margin:0">Načítám jídelníček…</p>';
+  try {
+    let days = (await ugTryApi('/api/public/menza'))?.days;
+    if (!days || !days.length) days = ugParseMenu(await ugFetchText(ugMenuSrc, t => t.includes('<item>')));
+    const day = days[0];
+    if (!day || !day.groups.length) throw 0;
+    menu.innerHTML = '<strong>' + ugEsc(day.date) + '</strong>' + day.groups.map(g =>
+      '<div style="margin-top:6px"><b>' + ugEsc(g.name) + '</b><ul style="margin:2px 0 0 16px;padding:0">' +
+      g.items.map(i => '<li>' + ugEsc(i) + '</li>').join('') + '</ul></div>').join('');
+    if (updated) updated.textContent = 'Zdroj: WebKredit VŠB';
+  } catch (e) {
+    menu.innerHTML = '<p class="campus-note" style="margin:0">Jídelníček se nepodařilo načíst – <a href="https://stravovani.vsb.cz/webkredit/Ordering/Menu" target="_blank" rel="noopener">otevřít WebKredit</a>.</p>';
+    if (updated) updated.textContent = '';
+  }
+};
+
+window.refreshCampusNews = async function () {
+  const box = document.getElementById('sluzby-news');
+  if (!box) return;
+  try {
+    let items = (await ugTryApi('/api/public/news'))?.items;
+    if (!items || !items.length) items = ugParseNews(await ugFetchText(ugNewsSrc, t => t.includes('news-item')));
+    if (!items.length) throw 0;
+    box.innerHTML = items.map(n =>
+      '<a href="' + ugEsc(n.url) + '" target="_blank" rel="noopener" style="display:flex;gap:10px;text-decoration:none;color:inherit">' +
+      (n.image ? '<img src="' + ugEsc(n.image) + '" alt="" loading="lazy" style="width:84px;height:56px;object-fit:cover;border-radius:10px;flex-shrink:0">' : '') +
+      '<div style="min-width:0"><div style="font-size:13px;font-weight:700;line-height:1.25">' + ugEsc(n.title) + '</div>' +
+      '<div style="font-size:11px;color:#6b7280;margin-top:2px">' + ugEsc(n.date) + '</div></div></a>').join('');
+  } catch (e) { box.innerHTML = '<p class="campus-note" style="margin:0">Aktuality se nepodařilo načíst.</p>'; }
+};
+
+function ugInitServices() { window.refreshCampusMenu(); window.refreshCampusNews(); }
+if (document.readyState !== 'loading') ugInitServices();
+else document.addEventListener('DOMContentLoaded', ugInitServices);
+</script>
+  <!-- JAVASCRIPT LOGIKA -->
+  <script>
+    let currentUser = null;
+    let map = null;
+    let userMarker = null;
+    let routeLine = null;
+    let navTarget = null;
+    let currentPos = { lat: 49.83108, lng: 18.16084 };
+    let activeQuest = null;
+
+    // Web Audio API pro retro zvuky
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep() {
+      try {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+      } catch(e) {}
+    }
+
+    // Oficiální brandové barvy fakult VŠB-TUO
+    const facultyColors = {
+      'FEI': { primary: '#00A9CE', dark: '#0087A6' },
+      'FBI': { primary: '#F0821E', dark: '#C96610' },
+      'FAST': { primary: '#7D4E9E', dark: '#5F3A7A' },
+      'EKF': { primary: '#1E4D9B', dark: '#163A76' },
+      'HGF': { primary: '#3FA34D', dark: '#2F7F3B' },
+      'FMT': { primary: '#E1251B', dark: '#B31B13' },
+      'FS': { primary: '#F2B71B', dark: '#C99510' }
+    };
+
+    function applyFacultyTheme(faculty) {
+      const colors = facultyColors[faculty] || facultyColors['FEI'];
+      document.documentElement.style.setProperty('--brand-color', colors.primary);
+      document.documentElement.style.setProperty('--brand-dark', colors.dark);
+    }
+
+    function changeAppFaculty(fac) {
+      if(!currentUser) return;
+      currentUser.faculty = fac;
+      applyFacultyTheme(fac);
+      document.getElementById('header-faculty').innerText = `${fac} • VŠB-TUO`;
+      document.getElementById('profile-faculty').innerText = `${fac} • VŠB-TUO`;
+      document.getElementById('profile-faculty-select').value = fac;
+      updateFacultyQuestUI();
+      ugRefreshMarkers();
+      localStorage.setItem('vsb_active_user', JSON.stringify(currentUser));
+    }
+    // Budovy, které zůstávají zvýrazněné vždy (aula, hvězdárna, Vrtule) – nikdy se nezbarví fakultou ani neutrálně
+    const FIXED_MARKERS = ['ua', 'hvezdarna', 'vrtule'];
+
+    function ugRefreshMarkers() {
+      document.querySelectorAll('.campus-marker[data-bid]').forEach(el => {
+        const b = vsbBuildings.find(x => x.id === el.dataset.bid);
+        if (!b || FIXED_MARKERS.includes(b.id)) return;
+        el.classList.toggle('campus-marker-mine', !!(currentUser && b.category==='faculties' && (b.deans||[]).includes(currentUser.faculty)));
+      });
+    }
+
+    function handleLogin() {
+      const name = document.getElementById('auth-name').value.trim();
+      const faculty = document.getElementById('auth-faculty').value;
+      if(!name) { alert("Zadejte prosím své jméno."); return; }
+
+      currentUser = { name, faculty, xp: 0 };
+      localStorage.setItem('vsb_active_user', JSON.stringify(currentUser));
+      initUserSession();
+    }
+
+    function handleLogout() {
+      currentUser = null;
+      localStorage.removeItem('vsb_active_user');
+      document.getElementById('screen-main').classList.add('hidden');
+      document.getElementById('screen-auth').classList.remove('hidden');
+    }
+
+    function initUserSession() {
+      applyFacultyTheme(currentUser.faculty);
+      document.getElementById('screen-auth').classList.add('hidden');
+      document.getElementById('screen-main').classList.remove('hidden');
+      
+      document.getElementById('header-username').innerText = currentUser.name;
+      document.getElementById('header-faculty').innerText = `${currentUser.faculty} • VŠB-TUO`;
+      document.getElementById('user-xp').innerText = currentUser.xp;
+      document.getElementById('quest-xp').innerText = `${currentUser.xp} XP`;
+      
+      document.getElementById('profile-name').innerText = currentUser.name;
+      document.getElementById('profile-faculty').innerText = `${currentUser.faculty} • VŠB-TUO`;
+      document.getElementById('profile-xp').innerText = `${currentUser.xp} XP`;
+      document.getElementById('profile-faculty-select').value = currentUser.faculty;
+
+      updateFacultyQuestUI();
+      if (typeof initQuiz === 'function') initQuiz();
+
+      setTimeout(() => { initMap(); }, 200);
+    }
+
+    function updateFacultyQuestUI() {
+      const titleEl = document.getElementById('faculty-quest-title');
+      if(titleEl) titleEl.innerText = `🏛️ Návštěva fakulty ${currentUser.faculty}`;
+    }
+
+    function clickHeart() {
+      currentUser.xp += 1;
+      updateXPDisplay();
+
+      const popup = document.getElementById('heart-popup-overlay');
+      popup.classList.remove('hidden');
+      setTimeout(() => { popup.classList.add('hidden'); }, 1400);
+    }
+
+    // Výpočet stavu menzy (živá otevírací doba podle reálného času)
+    function getMenzaStatus() {
+      const now = new Date();
+      const day = now.getDay(); // 0 = Ne, 6 = So
+      const hours = now.getHours();
+      const mins = now.getMinutes();
+      const timeVal = hours * 60 + mins;
+
+      // Víkend
+      if (day === 0 || day === 6) return `<span class="text-rose-400 font-bold">● Zavřeno (Víkend)</span>`;
+      
+      // Po-Pá: 10:45 (645 min) až 14:30 (870 min)
+      if (timeVal >= 645 && timeVal <= 870) {
+        return `<span class="text-blue-600 font-bold animate-pulse">● Otevřeno (Výdej do 14:15)</span>`;
+      } else {
+        return `<span class="text-rose-400 font-bold">● Mimo provozní dobu (Otevírá v 10:45)</span>`;
+      }
+    }
+
+    // One verified directory drives map markers, categories and search.
+    const vsbBuildings = UniGOCampus.filter(b => !b.id.startsWith('tram-')).map(b => ({
+      ...b, color: 'var(--campus-primary)', icon: '',
+      floors: b.id === 'menza' ? '<div class="ug-menu">Načítám dnešní menu…</div>' :
+        '<p class="campus-note">Orientační poloha budovy, nikoli konkrétní učebny.</p><a class="campus-source" href="https://www.vsb.cz/cs/univerzita/kontakty-mapy-parkovani/mapy-arealu/" target="_blank" rel="noopener">Oficiální plán areálu ↗</a>'
+    }));
+    const classroomIndex = [];
+
+    let mapMarkers = {};
+
+    function initMap() {
+      if (map) { map.remove(); map = null; }
+      const container = document.getElementById('leaflet-map');
+      if(!container) return;
+
+      map = L.map('leaflet-map', { zoomControl: false, maxBounds: [[49.70, 18.0], [49.90, 18.35]] }).setView([49.8315, 18.1600], 15);
+
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      vsbBuildings.forEach(b => {
+        const fixed = FIXED_MARKERS.includes(b.id);
+        const mine = !fixed && currentUser && b.category==='faculties' && (b.deans||[]).includes(currentUser.faculty);
+        const cls = b.id === 'vrtule' ? 'campus-marker campus-marker-vrtule'
+          : b.id === 'hvezdarna' ? 'campus-marker campus-marker-hvezdarna'
+          : b.id === 'ua' ? 'campus-marker campus-marker-aula'
+          : `campus-marker ${mine ? 'campus-marker-mine' : ''}`;
+        const customHtml = b.id === 'vrtule'
+          ? `<span class="${cls}" data-bid="${b.id}" title="Klub Vrtule"><i class="fa-solid fa-disco-ball"></i> Vrtule</span>`
+          : `<span class="${cls}" data-bid="${b.id}">${b.name}</span>`;
+        const icon = L.divIcon({ className: 'campus-marker-wrap', html: customHtml, iconSize: [0, 0] });
+        const popupContent = `<div class="campus-popup"><h3>${b.name}</h3><p>${b.title}</p><div class="campus-popup-body">${b.floors}</div><button class="campus-primary-button" onclick="playBeep(); startNav(${b.lat}, ${b.lng}, '${b.name}')">Navigovat sem <i class="fa-solid fa-arrow-right"></i></button></div>`;
+        const marker = L.marker([b.lat, b.lng], {icon: icon}).addTo(map).bindPopup(popupContent);
+        mapMarkers[b.id] = marker;
+      });
+
+      setTimeout(() => { if(map) map.invalidateSize(); }, 250);
+      trackGPS();
+    }
+
+    function centerBuilding(id) {
+      if(mapMarkers[id] && map) {
+        const marker = mapMarkers[id];
+        map.setView(marker.getLatLng(), 17, {animate: true});
+        marker.openPopup();
+      }
+    }
+
+    function filterCampusSearch(query) { if (window.renderCampusList) window.renderCampusList(); }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      return Math.abs(R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))));
+    }
+
+    function trackGPS() {
+      const renderUser = (lat, lng) => {
+        currentPos = { lat, lng };
+        if (userMarker && map) {
+          userMarker.setLatLng([lat, lng]);
+        } else if (map) {
+          const userHtml = `
+            <div style="transform: translate(-50%, -50%); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
+              <div style="width: 20px; height: 20px; background: var(--brand-color, #2563eb); border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,135,81,0.9);"></div>
+            </div>
+          `;
+          const userIcon = L.divIcon({ className: '', html: userHtml, iconSize: [0, 0] });
+          userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+        }
+        if(navTarget) fetchCampusRoute(false);
+      };
+
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          (pos) => renderUser(pos.coords.latitude, pos.coords.longitude),
+          () => renderUser(49.83604, 18.15781),
+          { enableHighAccuracy: true, timeout: 5000 }
+        );
+      } else {
+        renderUser(49.83604, 18.15781);
+      }
+    }
+
+    function centerGPS() {
+      if (map && userMarker) { map.setView([currentPos.lat, currentPos.lng], 18, {animate: true}); }
+    }
+
+    function startNav(lat, lon, name) {
+      navTarget = { lat, lng: lon }; lastRouteFrom = null;
+      if(map) map.closePopup();
+      document.getElementById('navigation-hud').classList.remove('hidden');
+      document.getElementById('hud-dest').innerText = name;
+      fetchCampusRoute();
+    }
+
+    // Pěší navigace po chodnících a stezkách (OSM, profil "foot")
+    let routeCasing = null;
+    let lastRouteFrom = null;
+    let routeRequestId = 0;
+    const WALK_SPEED = 1.3; // m/s ≈ 4,7 km/h
+
+    const turnText = (s) => {
+      const m = s.maneuver || {};
+      const dir = { left: 'doleva', right: 'doprava', 'slight left': 'mírně doleva', 'slight right': 'mírně doprava', 'sharp left': 'ostře doleva', 'sharp right': 'ostře doprava', straight: 'rovně', uturn: 'otočte se' }[m.modifier] || 'rovně';
+      if (m.type === 'arrive') return 'Jste v cíli';
+      if (m.type === 'depart') return 'Vyjděte' + (s.name ? ' po ' + s.name : ' po chodníku');
+      return 'Za ' + Math.round(s.distance) + ' m ' + dir + (s.name ? ' – ' + s.name : '');
+    };
+
+    function drawRoute(coords, color) {
+      if (routeLine) map.removeLayer(routeLine);
+      if (routeCasing) map.removeLayer(routeCasing);
+      routeCasing = L.polyline(coords, { color: '#ffffff', weight: 13, opacity: 1, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      routeLine = L.polyline(coords, { color: '#2563eb', weight: 7, opacity: 1, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+    }
+
+    async function fetchCampusRoute(force = true) {
+      if (!navTarget || !map) return;
+      const from = { ...currentPos };
+      // při pohybu GPS přepočítat jen po posunu o víc než 20 m
+      if (!force && lastRouteFrom && calculateDistance(from.lat, from.lng, lastRouteFrom.lat, lastRouteFrom.lng) < 20) return;
+      lastRouteFrom = from;
+      const reqId = ++routeRequestId;
+      const color = getComputedStyle(document.documentElement).getPropertyValue('--brand-color').trim() || '#2563eb';
+      document.getElementById('hud-dist').innerText = 'Hledám pěší trasu…';
+
+      try {
+        const url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${from.lng},${from.lat};${navTarget.lng},${navTarget.lat}?overview=full&geometries=geojson&steps=true`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (reqId !== routeRequestId || !navTarget) return;
+        if (data.code !== 'Ok' || !data.routes.length) throw new Error('no route');
+        const r = data.routes[0];
+        const coords = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        coords.unshift([from.lat, from.lng]);
+        coords.push([navTarget.lat, navTarget.lng]);
+        drawRoute(coords, color);
+        const mins = Math.max(1, Math.round(r.distance / WALK_SPEED / 60));
+        const steps = r.legs[0].steps.filter(s => s.distance > 3);
+        const next = steps[1] || steps[0];
+        document.getElementById('hud-dist').innerText = `${Math.round(r.distance)} m · ${mins} min pěšky`;
+        document.getElementById('hud-info').innerText = next ? turnText(next) : 'Po chodnících kampusu';
+        if (force) map.fitBounds(routeLine.getBounds(), { padding: [60, 60], animate: true });
+      } catch (e) {
+        if (reqId !== routeRequestId || !navTarget) return;
+        const dist = calculateDistance(from.lat, from.lng, navTarget.lat, navTarget.lng);
+        drawRoute([[from.lat, from.lng], [navTarget.lat, navTarget.lng]], color);
+        document.getElementById('hud-dist').innerText = `~${Math.round(dist)} m vzdušnou čarou`;
+        document.getElementById('hud-info').innerText = 'Pěší trasu se nepodařilo načíst – zkontroluj připojení.';
+        if (force) map.fitBounds(routeLine.getBounds(), { padding: [60, 60], animate: true });
+      }
+    }
+
+    function stopNav() {
+      navTarget = null;
+      document.getElementById('navigation-hud').classList.add('hidden');
+      if (routeLine && map) { map.removeLayer(routeLine); routeLine = null; }
+      if (routeCasing && map) { map.removeLayer(routeCasing); routeCasing = null; }
+      lastRouteFrom = null; routeRequestId++;
+    }
+
+    function startFacultyQuest() {
+      const facCode = currentUser.faculty.toLowerCase();
+      const b = vsbBuildings.find(item => item.id === facCode) || vsbBuildings.find(item => (item.deans || []).includes(currentUser.faculty)) || vsbBuildings[0];
+      activeQuest = { id: facCode, name: b.name, lat: b.lat, lng: b.lng, xp: 150, btnId: 'faculty-quest-btn', itemId: 'quest-item-faculty' };
+      startNav(b.lat, b.lng, b.name);
+      switchTab('map');
+      const btn = document.getElementById('faculty-quest-btn');
+      btn.innerText = "Ověřit příchod";
+      btn.setAttribute('onclick', 'playBeep(); verifyQuestArrival()');
+    }
+
+    function startNavQuest(destId, xpVal, itemId, descId, btnId) {
+      const b = vsbBuildings.find(item => item.id === destId);
+      activeQuest = { id: destId, name: b.name, lat: b.lat, lng: b.lng, xp: xpVal, btnId: btnId, itemId: itemId };
+      startNav(b.lat, b.lng, b.name);
+      switchTab('map');
+      const btn = document.getElementById(btnId);
+      btn.innerText = "Ověřit příchod";
+      btn.setAttribute('onclick', 'playBeep(); verifyQuestArrival()');
+    }
+
+    function verifyQuestArrival() {
+      if (!activeQuest) return;
+      const dist = calculateDistance(currentPos.lat, currentPos.lng, activeQuest.lat, activeQuest.lng);
+      if (dist <= 65) {
+        currentUser.xp += activeQuest.xp;
+        updateXPDisplay();
+        stopNav();
+        const item = document.getElementById(activeQuest.itemId);
+        item.innerHTML = `<div class="space-y-0.5"><h4 class="text-sm font-bold text-blue-600">✓ Splněno: ${activeQuest.name}</h4><p class="text-xs text-gray-500">+${activeQuest.xp} XP připsáno</p></div><span class="text-xs font-semibold text-blue-600 bg-blue-600/15 px-3 py-1 rounded-xl">Hotovo</span>`;
+        alert(`🎉 Úspěšně jsi dorazil/a k budově ${activeQuest.name}! Získáváš +${activeQuest.xp} XP.`);
+        activeQuest = null;
+      } else {
+        alert(`Ještě nejsi na místě. Dojdi blíž k budově ${activeQuest.name} (zbývá cca ${Math.round(dist)} m).`);
+        switchTab('map');
+      }
+    }
+
+    function updateXPDisplay() {
+      document.getElementById('quest-xp').innerText = `${currentUser.xp} XP`;
+      document.getElementById('user-xp').innerText = currentUser.xp;
+      document.getElementById('profile-xp').innerText = `${currentUser.xp} XP`;
+      let pct = Math.min((currentUser.xp / 500) * 100, 100);
+      document.getElementById('quest-bar').style.width = `${pct}%`;
+      localStorage.setItem('vsb_active_user', JSON.stringify(currentUser));
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      
+      const navButtons = {
+        'map': document.getElementById('nav-btn-map'),
+        'quests': document.getElementById('nav-btn-quests'),
+        'game': document.getElementById('nav-btn-game'),
+        'sluzby': document.getElementById('nav-btn-sluzby'),
+        'profile': document.getElementById('nav-btn-profile')
+      };
+
+      for (const [key, btn] of Object.entries(navButtons)) {
+        if(btn) {
+          btn.className = key === tabId ? "flex flex-col items-center text-brand-500 transition gap-0.5" : "flex flex-col items-center text-gray-500 hover:text-gray-800 transition gap-0.5";
+        }
+      }
+      
+      if (tabId === 'map' && map) { setTimeout(() => map.invalidateSize(), 150); }
+      if (tabId === 'game') { initSnakeGame(); }
+    }
+
+    function switchGame(gameName) {
+      document.querySelectorAll('.game-box').forEach(el => el.classList.add('hidden'));
+      ['snake', 'tetris', 'pexeso', 'breakout', 'rocket'].forEach(g => {
+        const btn = document.getElementById(`btn-game-${g}`);
+        if(btn) btn.className = "px-3.5 py-2 text-xs font-bold rounded-xl text-gray-500 transition whitespace-nowrap";
+      });
+
+      document.getElementById(`game-container-${gameName}`).classList.remove('hidden');
+      const activeBtnMap = { 'snake': 'emerald', 'tetris': 'cyan', 'pexeso': 'pink', 'breakout': 'amber', 'rocket': 'rose' };
+      const color = activeBtnMap[gameName] || 'emerald';
+      document.getElementById(`btn-game-${gameName}`).className = `px-3.5 py-2 text-xs font-bold rounded-xl bg-${color}-500 text-white transition whitespace-nowrap shadow-md`;
+
+      if(gameName === 'snake') initSnakeGame();
+      if(gameName === 'tetris') startTetrisGame();
+      if(gameName === 'pexeso') startPexesoGame();
+      if(gameName === 'breakout') startBreakoutGame();
+      if(gameName === 'rocket') startRocketGame();
+    }
+
+    // 1. HAD
+    const canvas = document.getElementById("snakeCanvas");
+    const ctx = canvas.getContext("2d");
+    let snake = [{x: 10, y: 10}];
+    let food = {x: 5, y: 5};
+    let dx = 1, dy = 0;
+    let snakeScore = 0;
+    let highscore = localStorage.getItem('vsb_snake_hi') || 0;
+    let gameInterval = null;
+    let starfield = Array.from({length: 30}, () => ({x: Math.random()*280, y: Math.random()*280, speed: Math.random()*1.5+0.5}));
+
+    document.getElementById('snake-highscore').innerText = highscore;
+
+    function initSnakeGame() { drawSnakeBoard(); }
+    function startSnakeGame() {
+      snake = [{x: 10, y: 10}];
+      food = {x: Math.floor(Math.random()*20), y: Math.floor(Math.random()*20)};
+      dx = 1; dy = 0; snakeScore = 0;
+      document.getElementById('snake-score').innerText = snakeScore;
+      document.getElementById('snake-start-btn').innerText = "RESTART";
+      if(gameInterval) clearInterval(gameInterval);
+      gameInterval = setInterval(updateSnake, 110);
+    }
+    function changeSnakeDir(dir) {
+      if (dir === 'UP' && dy === 0) { dx = 0; dy = -1; }
+      if (dir === 'DOWN' && dy === 0) { dx = 0; dy = 1; }
+      if (dir === 'LEFT' && dx === 0) { dx = -1; dy = 0; }
+      if (dir === 'RIGHT' && dx === 0) { dx = 1; dy = 0; }
+    }
+    function updateSnake() {
+      const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+      if (head.x < 0 || head.x >= 20 || head.y < 0 || head.y >= 20 || snake.some(p => p.x === head.x && p.y === head.y)) {
+        clearInterval(gameInterval);
+        document.getElementById('snake-start-btn').innerText = "HRÁT ZNOVU";
+        return;
+      }
+      snake.unshift(head);
+      if (head.x === food.x && head.y === food.y) {
+        snakeScore += 10;
+        document.getElementById('snake-score').innerText = snakeScore;
+        if (snakeScore > highscore) { highscore = snakeScore; localStorage.setItem('vsb_snake_hi', highscore); document.getElementById('snake-highscore').innerText = highscore; }
+        food = {x: Math.floor(Math.random()*20), y: Math.floor(Math.random()*20)};
+      } else { snake.pop(); }
+      drawSnakeBoard();
+    }
+    function drawSnakeBoard() {
+      ctx.fillStyle = "#030308"; ctx.fillRect(0, 0, 280, 280);
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      starfield.forEach(s => {
+        s.y += s.speed; if(s.y > 280) s.y = 0;
+        ctx.fillRect(s.x, s.y, 2, 2);
+      });
+      ctx.fillStyle = "#f43f5e"; ctx.shadowColor = "#f43f5e"; ctx.shadowBlur = 15;
+      ctx.fillRect(food.x * 14 + 2, food.y * 14 + 2, 10, 10);
+      ctx.fillStyle = "#10b981"; ctx.shadowColor = "#10b981"; ctx.shadowBlur = 12;
+      snake.forEach((part, i) => {
+        if(i === 0) ctx.fillStyle = "#34d399";
+        else ctx.fillStyle = "#10b981";
+        ctx.fillRect(part.x * 14 + 1, part.y * 14 + 1, 12, 12);
+      });
+      ctx.shadowBlur = 0;
+    }
+
+    // 2. TETRIS
+    const tCanvas = document.getElementById("tetrisCanvas");
+    const tCtx = tCanvas.getContext("2d");
+    let tBoard = Array.from({length: 15}, () => Array(10).fill(0));
+    let tScore = 0, tInterval = null;
+    const tetrominos = [[[1,1,1,1]], [[1,1],[1,1]], [[0,1,0],[1,1,1]], [[1,0,0],[1,1,1]], [[0,0,1],[1,1,1]]];
+    let currentPiece = { shape: tetrominos[0], x: 3, y: 0 };
+
+    function startTetrisGame() {
+      tBoard = Array.from({length: 15}, () => Array(10).fill(0));
+      tScore = 0; document.getElementById('tetris-score').innerText = tScore;
+      currentPiece = { shape: tetrominos[Math.floor(Math.random()*tetrominos.length)], x: 3, y: 0 };
+      if(tInterval) clearInterval(tInterval);
+      tInterval = setInterval(updateTetris, 380);
+    }
+    function updateTetris() {
+      if (!checkCollision(currentPiece.shape, currentPiece.x, currentPiece.y + 1)) {
+        currentPiece.y++;
+      } else {
+        currentPiece.shape.forEach((row, r) => row.forEach((val, c) => { if(val && currentPiece.y+r >= 0) tBoard[currentPiece.y+r][currentPiece.x+c] = 1; }));
+        tetrisClearLines();
+        currentPiece = { shape: tetrominos[Math.floor(Math.random()*tetrominos.length)], x: 3, y: 0 };
+        if (checkCollision(currentPiece.shape, currentPiece.x, currentPiece.y)) { clearInterval(tInterval); tInterval = null; alert("Konec Tetrisu!"); }
+      }
+      drawTetris();
+    }
+    function tetrisClearLines() {
+      let cleared = 0;
+      for (let r = tBoard.length - 1; r >= 0; r--) {
+        if (tBoard[r].every(v => v)) { tBoard.splice(r, 1); tBoard.unshift(Array(10).fill(0)); cleared++; r++; }
+      }
+      tScore += 10 + [0, 100, 300, 500, 800][cleared];
+      document.getElementById('tetris-score').innerText = tScore;
+    }
+    function tetrisDrop() {
+      if (!tInterval) return;
+      while (!checkCollision(currentPiece.shape, currentPiece.x, currentPiece.y + 1)) { currentPiece.y++; tScore += 2; }
+      updateTetris();
+    }
+    function checkCollision(shape, ox, oy) {
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (shape[r][c] && (ox+c < 0 || ox+c >= 10 || oy+r >= 15 || (oy+r >= 0 && tBoard[oy+r][ox+c]))) return true;
+        }
+      }
+      return false;
+    }
+    function tetrisMove(dir) { if (!checkCollision(currentPiece.shape, currentPiece.x + dir, currentPiece.y)) { currentPiece.x += dir; drawTetris(); } }
+    function tetrisRotate() {
+      const rot = currentPiece.shape[0].map((_, i) => currentPiece.shape.map(row => row[i]).reverse());
+      if (!checkCollision(rot, currentPiece.x, currentPiece.y)) { currentPiece.shape = rot; drawTetris(); }
+    }
+    function drawTetris() {
+      tCtx.fillStyle = "#030308"; tCtx.fillRect(0, 0, 200, 300);
+      tBoard.forEach((row, r) => row.forEach((val, c) => { if(val) { tCtx.fillStyle = "#3b82f6"; tCtx.shadowColor = "#3b82f6"; tCtx.shadowBlur = 8; tCtx.fillRect(c*20+1, r*20+1, 18, 18); } }));
+      tCtx.fillStyle = "#06b6d4"; tCtx.shadowColor = "#06b6d4"; tCtx.shadowBlur = 12;
+      currentPiece.shape.forEach((row, r) => row.forEach((val, c) => { if(val && currentPiece.y+r >= 0) tCtx.fillRect((currentPiece.x+c)*20+1, (currentPiece.y+r)*20+1, 18, 18); }));
+      tCtx.shadowBlur = 0;
+    }
+
+    // 3. PEXESO
+    let pexesoCards = ['V', 'S', 'B', 'U', 'V', 'S', 'B', 'U'];
+    let flippedCards = [], matchedPairs = 0, canFlip = true;
+    function startPexesoGame() {
+      pexesoCards.sort(() => Math.random() - 0.5);
+      matchedPairs = 0; flippedCards = []; canFlip = true;
+      document.getElementById('pexeso-matches').innerText = matchedPairs;
+      const grid = document.getElementById('pexeso-grid'); grid.innerHTML = '';
+      pexesoCards.forEach((letter, idx) => {
+        const card = document.createElement('div');
+        card.className = "bg-gradient-to-br from-zinc-900 to-zinc-950 border border-pink-500/40 rounded-xl flex items-center justify-center text-2xl font-black text-pink-400 cursor-pointer select-none h-14 shadow-lg hover:border-pink-500 transition-all";
+        card.dataset.idx = idx;
+        card.innerText = "?";
+        card.onclick = () => {
+          if(!canFlip || card.classList.contains('matched') || card.classList.contains('flipped')) return;
+          playBeep();
+          card.innerText = letter; 
+          card.classList.add('flipped', 'bg-gradient-to-br', 'from-pink-950', 'to-zinc-900', 'border-pink-500', 'shadow-[0_0_20px_rgba(236,72,153,0.7)]');
+          flippedCards.push({card, letter, idx});
+
+          if(flippedCards.length === 2) {
+            canFlip = false;
+            setTimeout(() => {
+              if(flippedCards[0].letter === flippedCards[1].letter && flippedCards[0].idx !== flippedCards[1].idx) {
+                flippedCards.forEach(f => f.card.classList.add('matched', 'border-blue-600', 'text-blue-600', 'bg-emerald-950/60', 'shadow-[0_0_20px_rgba(16,185,129,0.7)]'));
+                matchedPairs++; 
+                document.getElementById('pexeso-matches').innerText = matchedPairs;
+                if(matchedPairs === 4) {
+                  alert("🎉 VYNIKAJÍCÍ! Pexeso dokončeno!");
+                }
+              } else {
+                flippedCards.forEach(f => { 
+                  f.card.innerText = "?"; 
+                  f.card.className = "bg-gradient-to-br from-zinc-900 to-zinc-950 border border-pink-500/40 rounded-xl flex items-center justify-center text-2xl font-black text-pink-400 cursor-pointer select-none h-14 shadow-lg hover:border-pink-500 transition-all";
+                });
+              }
+              flippedCards = []; 
+              canFlip = true;
+            }, 600);
+          }
+        };
+        grid.appendChild(card);
+      });
+    }
+
+    // 4. BREAKOUT
+    const bCanvas = document.getElementById("breakoutCanvas");
+    const bCtx = bCanvas.getContext("2d");
+    let bPaddleX = 100, bBallX = 140, bBallY = 140, bDX = 2.5, bDY = -2.5, bScore = 0, bInterval = null;
+    let bricks = [];
+    for(let c=0; c<4; c++) { for(let r=0; r<5; r++) { bricks.push({x: r*54 + 8, y: c*18 + 15, status: 1}); } }
+
+    function startBreakoutGame() {
+      bPaddleX = 100; bBallX = 140; bBallY = 140; bDX = 2.5; bDY = -2.5; bScore = 0;
+      bricks.forEach(b => b.status = 1);
+      document.getElementById('breakout-score').innerText = bScore;
+      if(bInterval) clearInterval(bInterval);
+      bInterval = setInterval(updateBreakout, 25);
+    }
+    function breakoutMove(dir) { bPaddleX = Math.max(0, Math.min(210, bPaddleX + dir * 25)); }
+    function updateBreakout() {
+      bCtx.fillStyle = "#030308"; bCtx.fillRect(0, 0, 280, 280);
+      
+      bricks.forEach(b => { 
+        if(b.status === 1) { 
+          bCtx.fillStyle = "#f59e0b"; bCtx.shadowColor = "#f59e0b"; bCtx.shadowBlur = 10; 
+          bCtx.fillRect(b.x, b.y, 50, 14); 
+        } 
+      });
+
+      bCtx.fillStyle = "#ec4899"; bCtx.shadowColor = "#ec4899"; bCtx.shadowBlur = 12;
+      bCtx.fillRect(bPaddleX, 260, 70, 10);
+
+      bCtx.beginPath(); bCtx.arc(bBallX, bBallY, 6, 0, Math.PI*2); 
+      bCtx.fillStyle = "#ffffff"; bCtx.shadowColor = "#ffffff"; bCtx.shadowBlur = 15;
+      bCtx.fill(); bCtx.closePath();
+      bCtx.shadowBlur = 0;
+
+      bBallX += bDX; bBallY += bDY;
+      if(bBallX < 6 || bBallX > 274) bDX = -bDX;
+      if(bBallY < 6) bDY = -bDY;
+      else if(bBallY > 254 && bBallX >= bPaddleX && bBallX <= bPaddleX + 70) { bDY = -bDY; }
+      else if(bBallY > 280) { clearInterval(bInterval); alert("Konec hry Breakout!"); }
+
+      bricks.forEach(b => {
+        if(b.status === 1 && bBallX > b.x && bBallX < b.x + 50 && bBallY > b.y && bBallY < b.y + 14) {
+          bDY = -bDY; b.status = 0; bScore += 10;
+          document.getElementById('breakout-score').innerText = bScore;
+        }
+      });
+    }
+
+    // 5. RAKETKA
+    const rCanvas = document.getElementById("rocketCanvas");
+    const rCtx = rCanvas.getContext("2d");
+    let rocketX = 125, rScore = 0, rInterval = null, rBullets = [], rMeteors = [{x: 100, y: 20}];
+
+    function startRocketGame() {
+      rocketX = 125; rScore = 0; rBullets = []; rMeteors = [{x: 50, y: 10}, {x: 180, y: 40}];
+      document.getElementById('rocket-score').innerText = rScore;
+      if(rInterval) clearInterval(rInterval);
+      rInterval = setInterval(updateRocket, 30);
+    }
+    function rocketMove(delta) { rocketX = Math.max(0, Math.min(250, rocketX + delta)); }
+    function rocketShoot() { rBullets.push({x: rocketX + 12, y: 240}); }
+    function updateRocket() {
+      rCtx.fillStyle = "#030308"; rCtx.fillRect(0, 0, 280, 280);
+      
+      rCtx.fillStyle = "#f43f5e"; rCtx.shadowColor = "#f43f5e"; rCtx.shadowBlur = 12;
+      rCtx.fillRect(rocketX, 245, 30, 25);
+      rCtx.fillStyle = "#38bdf8"; rCtx.fillRect(rocketX + 10, 235, 10, 10);
+
+      rCtx.fillStyle = "#fbbf24"; rCtx.shadowColor = "#fbbf24"; rCtx.shadowBlur = 10;
+      rBullets.forEach((b, i) => { b.y -= 8; rCtx.fillRect(b.x, b.y, 4, 10); if(b.y < 0) rBullets.splice(i, 1); });
+
+      rCtx.fillStyle = "#a855f7"; rCtx.shadowColor = "#a855f7"; rCtx.shadowBlur = 12;
+      rMeteors.forEach((m, mi) => {
+        m.y += 1.8; rCtx.fillRect(m.x, m.y, 24, 24);
+        if(m.y > 280) m.y = -20, m.x = Math.floor(Math.random()*250);
+        rBullets.forEach((b, bi) => {
+          if(b.x >= m.x && b.x <= m.x+24 && b.y >= m.y && b.y <= m.y+24) {
+            rMeteors.splice(mi, 1); rBullets.splice(bi, 1);
+            rScore += 1; document.getElementById('rocket-score').innerText = rScore;
+            rMeteors.push({x: Math.floor(Math.random()*250), y: -20});
+          }
+        });
+      });
+      rCtx.shadowBlur = 0;
+    }
+  </script>
+<style>
+  /* ===== UniGO v2: nový vzhled ===== */
+  body{background:#05060a}
+  header{background:linear-gradient(120deg,rgba(10,12,20,.92),rgba(10,12,20,.75)) !important;position:relative}
+  header::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--brand-color),#22d3ee,#a855f7,#f43f5e,var(--brand-color));background-size:300% 100%;animation:aurora 8s linear infinite}
+  @keyframes aurora{to{background-position:300% 0}}
+  nav{background:rgba(12,13,20,.92) !important;margin:0 10px 10px;border-radius:24px;border:1px solid rgba(255,255,255,.08) !important;box-shadow:0 18px 40px -12px rgba(0,0,0,.8)}
+  nav button{padding:8px 14px;border-radius:16px;transition:all .25s}
+  nav button.text-brand-500{background:color-mix(in srgb,var(--brand-color) 18%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand-color) 45%,transparent)}
+  #tab-quests,#tab-game,#tab-profile{background:radial-gradient(900px 400px at 10% -10%,color-mix(in srgb,var(--brand-color) 22%,transparent),transparent),radial-gradient(700px 400px at 110% 10%,rgba(168,85,247,.14),transparent),#07080d !important}
+  .ug-glass{background:rgba(14,15,23,.9);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 24px 50px -16px rgba(0,0,0,.85)}
+  .ug-me{position:relative;width:22px;height:22px;transform:translate(-50%,-50%)}
+  .ug-me i{position:absolute;inset:0;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 2px rgba(59,130,246,.4),0 4px 14px rgba(59,130,246,.7)}
+  .ug-me b{position:absolute;inset:-14px;border-radius:50%;background:rgba(59,130,246,.35);animation:ug-ping 1.8s ease-out infinite}
+  @keyframes ug-ping{from{transform:scale(.4);opacity:1}to{transform:scale(1.6);opacity:0}}
+  .ug-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;font-size:11px;font-weight:800}
+  .ug-dest{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);text-align:left;transition:transform .15s,background .15s}
+  .ug-dest:active{transform:scale(.97)}.ug-dest:hover{background:rgba(255,255,255,.07)}
+  .ug-ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:18px;flex-shrink:0}
+  .ug-tram{transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;background:#fff;color:#c8102e;border:3px solid #c8102e;border-radius:12px;padding:3px 7px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 8px 18px rgba(0,0,0,.35)}
+  .ug-opt{width:100%;text-align:left;padding:12px 14px;border-radius:14px;background:#14151d;border:1px solid #27272a;font-size:13px;font-weight:700;color:#e4e4e7;transition:all .2s}
+  .ug-opt:hover:not(:disabled){border-color:var(--brand-color);transform:translateX(3px)}
+  .ug-opt.ok{background:rgba(16,185,129,.18);border-color:#10b981;color:#a7f3d0}
+  .ug-opt.bad{background:rgba(244,63,94,.18);border-color:#f43f5e;color:#fecdd3}
+  .ug-arrived{animation:pop-in .4s cubic-bezier(.175,.885,.32,1.275)}
+</style>
+
+<!-- Categorized destination picker -->
+<div id="ug-sheet" role="dialog" aria-label="Kam to bude?" style="display:none">
+  <div class="campus-sheet-head"><div><span class="campus-eyebrow">VŠB UniGO / KAMPUS</span><h2>Kam to bude?</h2></div><button id="ug-toggle" class="campus-icon-button" onclick="ugToggleSheet(false)" aria-label="Zavřít výběr budov" title="Zavřít"><i class="fa-solid fa-xmark"></i></button></div>
+  <label class="campus-search"><i class="fa-solid fa-magnifying-glass"></i><input id="building-search" oninput="filterCampusSearch(this.value)" placeholder="Název nebo kód budovy…" aria-label="Hledat budovu"><button class="campus-icon-button" onclick="document.getElementById('building-search').value='';filterCampusSearch('')" aria-label="Vymazat hledání" title="Vymazat"><i class="fa-solid fa-xmark"></i></button></label>
+  <div id="campus-categories" class="campus-categories" role="group" aria-label="Kategorie míst">
+    <button class="is-active" data-category="all" onclick="setCampusCategory('all')" aria-pressed="true">Vše</button>
+    <button data-category="faculties" onclick="setCampusCategory('faculties')" aria-pressed="false">Fakulty</button>
+    <button data-category="teaching" onclick="setCampusCategory('teaching')" aria-pressed="false">Výuka</button>
+    <button data-category="services" onclick="setCampusCategory('services')" aria-pressed="false">Služby</button>
+    <button data-category="other" onclick="setCampusCategory('other')" aria-pressed="false">Další</button>
+  </div>
+  <div id="ug-list" class="campus-list"></div>
+  <div class="campus-sheet-foot"><p id="ug-gps-status">Zjišťuji tvoji polohu…</p><a href="https://www.vsb.cz/cs/univerzita/kontakty-mapy-parkovani/mapy-arealu/" target="_blank" rel="noopener">Plány areálů ↗</a></div>
+</div>
+<div id="ug-toast" class="ug-glass" style="position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:60;border-radius:18px;padding:10px 16px;font-size:12px;font-weight:800;display:none;max-width:90vw;text-align:center"></div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let accCircle = null, hasFix = false, firstFix = true, watchId = null, follow = true, arrived = false;
+
+  // ===== Tramvajové zastávky VŠB-TUO (linky směr Svinov mosty / Poruba) =====
+  const tramStops = [
+    { id:'tram-svinov', name:'VŠB-TUO (Opavská)', dir:'směr Svinov mosty', lat:49.83458, lng:18.16788 },
+    { id:'tram-poruba', name:'VŠB-TUO (17. listopadu)', dir:'směr Poruba, Vřesinská', lat:49.83270, lng:18.16550 }
+  ];
+  const idos = (from,to) => `https://idos.cz/ostrava/spojeni/?f=${encodeURIComponent(from)}&t=${encodeURIComponent(to)}`;
+
+  function toast(msg, ms=2600){ const t=$('ug-toast'); t.innerHTML=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',ms); }
+  window.ugToast = toast;
+
+  // Orientační odjezdy tramvají ze zastávky VŠB-TUO – vždy pro hodinu, ve které se uživatel dívá
+  const tramLines = {
+    'tram-svinov': [
+      { line:'8', head:'Svinov mosty', mins:[2,17,32,47] },
+      { line:'17', head:'Svinov mosty', mins:[8,23,38,53] }
+    ],
+    'tram-poruba': [
+      { line:'8', head:'Poruba, Vřesinská', mins:[5,20,35,50] },
+      { line:'9', head:'Poruba, Vřesinská', mins:[11,26,41,56] }
+    ]
+  };
+  function renderTramBoard(stopId){
+    const els = document.querySelectorAll(`.ug-board[data-stop="${stopId}"]`);
+    if(!els.length) return;
+    const now = new Date();
+    const deps = [];
+    (tramLines[stopId]||[]).forEach(l=>{
+      l.mins.forEach(m=>{
+        const t = new Date(now); t.setMinutes(m, 0, 0);
+        if(t <= now) t.setHours(t.getHours()+1);
+        if(t - now <= 60*60*1000) deps.push({ line:l.line, head:l.head, t });
+      });
+    });
+    deps.sort((a,b)=>a.t-b.t);
+    const fmt = t => t.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
+    els.forEach(el=>{
+      el.innerHTML = '<div style="font-size:10px;color:#6b7280;font-weight:700;margin-bottom:2px">Odjezdy v nejbližší hodině (orientační)</div>' +
+        (deps.slice(0,5).map(d=>`<div class="r"><span class="d"><i class="fa-solid fa-train-tram"></i>${d.line} · ${d.head}</span><span class="t">${fmt(d.t)}</span></div>`).join('')
+          || '<div class="r"><span class="d">V příští hodině nic nejede</span></div>');
+    });
+  }
+  // Tabule odjezdů ve Službách se obnovují každou minutu
+  function renderAllBoards(){ ['tram-svinov','tram-poruba'].forEach(renderTramBoard); }
+  renderAllBoards();
+  setInterval(renderAllBoards, 60000);
+
+  function addTramStops(){
+    if(!map || window._ugTrams) return; window._ugTrams = true;
+    tramStops.forEach(s=>{
+      const icon = L.divIcon({className:'', html:`<span class="campus-marker campus-transit-marker"><i class="fa-solid fa-train-tram"></i></span>`, iconSize:[0,0]});
+      const html = `<div style="width:230px;padding:8px">
+        <div style="font-weight:900;font-size:14px">🚋 Zastávka ${s.name}</div>
+        <div style="font-size:11px;color:#6b7280;margin:2px 0 8px">${s.dir} · tramvaje mezi Porubou a Svinovem</div>
+        <div class="ug-board" data-stop="${s.id}"></div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:6px">Přesné časy ověř v IDOS.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+          <button onclick="playBeep(); startNav(${s.lat}, ${s.lng}, 'Tram VŠB-TUO')" style="background:#2563eb;color:#fff;border:0;padding:10px;border-radius:999px;font-weight:700;font-size:12px">Navigovat na zastávku</button>
+          <a href="${idos('VŠB-TUO', s.id==='tram-svinov' ? 'Svinov mosty' : 'Poruba,Vřesinská')}" target="_blank" rel="noopener" style="background:#f3f4f6;color:#111827;padding:10px;border-radius:999px;font-weight:700;font-size:12px;text-align:center;text-decoration:none">IDOS ↗</a>
+        </div></div>`;
+      mapMarkers[s.id] = L.marker([s.lat,s.lng],{icon, zIndexOffset:500}).addTo(map).bindPopup(html);
+    });
+    map.on('popupopen', e=>{
+      const root = e.popup && e.popup.getElement ? e.popup.getElement() : null;
+      if(!root) return;
+      const board = root.querySelector('.ug-board[data-stop]');
+      if(board){ renderTramBoard(board.dataset.stop); clearInterval(window._ugBoardTimer); window._ugBoardTimer = setInterval(()=>renderTramBoard(board.dataset.stop), 60000); }
+      const menu = root.querySelector('.ug-menu');
+      if(menu && /Načítám/.test(menu.textContent)) menu.innerHTML = '<p class="campus-note" style="margin:0">Dnešní menu teď nemám k dispozici – aktuální jídelníček najdeš na <a class="campus-source" href="https://stravovani.vsb.cz/webkredit/Ordering/Menu" target="_blank" rel="noopener">WebKreditu ↗</a></p>';
+    });
+    map.on('popupclose', ()=>{ clearInterval(window._ugBoardTimer); });
+  }
+
+  let campusCategory = 'all';
+  const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  function rowHtml(b){
+    const code = b.id.startsWith('tram-') ? '<i class="fa-solid fa-train-tram"></i>' : b.id==='vrtule' ? '<i class="fa-solid fa-disco-ball"></i>' : b.name;
+    return `<button class="campus-result" onclick="selectCampusBuilding('${b.id}')"><span class="campus-code">${code}</span><span class="campus-result-text"><strong>${b.title.split(' · ')[0]}</strong><small>${b.title.split(' · ').slice(1).join(' · ') || b.codes}</small></span><i class="fa-solid fa-arrow-up-right-from-square campus-result-arrow"></i></button>`;
+  }
+  const emptyHtml = '<div class="campus-empty"><i class="fa-solid fa-magnifying-glass"></i><strong>Žádné místo nenalezeno</strong><span>Zkus název fakulty nebo kód budovy.</span><button class="campus-source" onclick="resetCampusSearch()">Vymazat filtry</button></div>';
+  function renderList(){
+    const list = $('ug-list'); if(!list) return;
+    const q = normalize($('building-search').value.trim());
+    const items = UniGOCampus.filter(b => (campusCategory === 'all' || campusCategory === b.category) && normalize(b.name+' '+b.title+' '+b.codes).includes(q));
+    // Při hledání plochý seznam, jinak složky s podkategoriemi
+    if(q){ list.innerHTML = items.map(rowHtml).join('') || emptyHtml; return; }
+    const folder = (title, icon, rows, inner='') => (rows.length || inner)
+      ? `<details class="campus-folder" open><summary><i class="fa-solid ${icon} campus-folder-icon"></i><span class="campus-folder-title">${title}</span><i class="fa-solid fa-chevron-down campus-folder-caret"></i></summary><div class="campus-folder-body">${rows.map(rowHtml).join('')}${inner}</div></details>` : '';
+    const sub = (title, rows) => rows.length
+      ? `<details class="campus-subfolder" open><summary>${title}<span class="campus-sub-count">${rows.length}</span></summary><div class="campus-folder-body">${rows.map(rowHtml).join('')}</div></details>` : '';
+    const myFac = currentUser ? currentUser.faculty : null;
+    const mine = myFac ? items.filter(b => (b.deans||[]).includes(myFac)) : [];
+    const svc = items.filter(b => b.category === 'services');
+    const servicesInner =
+      sub('🍽️ Jídlo', svc.filter(b => b.sub === 'jidlo')) +
+      sub('🛏️ Koleje', svc.filter(b => b.sub === 'koleje')) +
+      sub('🚋 Tramvaj a doprava', svc.filter(b => b.sub === 'doprava' || b.id.startsWith('tram-'))) +
+      sub('📚 Knihovna, sport a ostatní', svc.filter(b => ['knihovna','sh','vsh','ms','sn'].includes(b.id))) +
+      sub('🪩 Zábava', svc.filter(b => b.sub === 'zabava'));
+    list.innerHTML =
+      (mine.length ? `<h3 class="campus-group-title campus-group-mine">Tvoje fakulta ${myFac}</h3>` + mine.map(rowHtml).join('') : '') +
+      folder('Fakulty', 'fa-building-columns', items.filter(b => b.category === 'faculties')) +
+      folder('Výukové budovy', 'fa-chalkboard', items.filter(b => b.category === 'teaching')) +
+      folder('Služby', 'fa-store', [], servicesInner) +
+      folder('Výzkum a další místa', 'fa-flask', items.filter(b => b.category === 'other')) ||
+      emptyHtml;
+  }
+  window.renderCampusList = renderList;
+  window.setCampusCategory = function(category){
+    campusCategory = category;
+    document.querySelectorAll('#campus-categories button').forEach(b=>{b.classList.toggle('is-active',b.dataset.category===category);b.setAttribute('aria-pressed',String(b.dataset.category===category));});
+    renderList(); $('ug-list').scrollTop=0;
+  };
+  window.resetCampusSearch = function(){ $('building-search').value=''; setCampusCategory('all'); };
+  window.selectCampusBuilding = function(id){
+    const b=UniGOCampus.find(b=>b.id===id);if(!b)return;
+    ugToggleSheet(false); $('campus-selected').textContent=b.name+' · '+b.title.split(' · ')[0];
+    centerBuilding(id);
+  };
+  window.ugToggleSheet = function(open){
+    const sheet=$('ug-sheet');
+    const show=typeof open==='boolean'?open:sheet.style.display==='none';
+    sheet.style.display=show?'flex':'none';
+    if(show){renderList();$('ug-list').scrollTop=0;}
+  };
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')ugToggleSheet(false)});
+
+  // ===== Skutečná GPS poloha =====
+  function renderUser(lat,lng,acc){
+    currentPos = {lat,lng};
+    if(!map) return;
+    if(!userMarker){
+      userMarker = L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class="ug-me"><b></b><i></i></div>',iconSize:[0,0]}),zIndexOffset:2000}).addTo(map).bindTooltip('Tady jsi ty');
+    } else userMarker.setLatLng([lat,lng]);
+    if(acc){ if(!accCircle) accCircle = L.circle([lat,lng],{radius:acc,color:'#3b82f6',weight:1,fillColor:'#3b82f6',fillOpacity:.12,interactive:false}).addTo(map); else { accCircle.setLatLng([lat,lng]); accCircle.setRadius(acc);} }
+    if(firstFix && hasFix){ firstFix=false; map.setView([lat,lng],17,{animate:true}); toast('📍 Našel jsem tě na mapě. Vyber, kam jdeš.'); }
+    else if(navTarget && follow && hasFix) map.panTo([lat,lng],{animate:true});
+    if(navTarget){ fetchCampusRoute(false); checkArrival(); }
+    renderList();
+  }
+  function checkArrival(){
+    if(!navTarget || !hasFix) return;
+    const d = calculateDistance(currentPos.lat,currentPos.lng,navTarget.lat,navTarget.lng);
+    if(d < 25 && !arrived){ arrived = true; $('hud-dist').innerText='🎉 Jsi v cíli!'; $('hud-info').innerText='+25 XP za dorazení'; $('navigation-hud').classList.add('ug-arrived');
+      if(currentUser){ currentUser.xp += 25; updateXPDisplay(); } toast('🎉 Dorazil jsi do cíle! +25 XP'); }
+  }
+  window.trackGPS = function(){
+    const st = $('ug-gps-status');
+    $('tab-map').appendChild($('ug-sheet'));
+    ugToggleSheet(true);
+    addTramStops();
+    renderUser(currentPos.lat,currentPos.lng,null);
+    if(!('geolocation' in navigator)){ st.innerText='Tvůj prohlížeč neumí zjistit polohu.'; return; }
+    if(!window.isSecureContext){ st.innerText='Poloha funguje jen na zabezpečené adrese (https).'; }
+    if(watchId!==null) navigator.geolocation.clearWatch(watchId);
+    watchId = navigator.geolocation.watchPosition(pos=>{
+      hasFix = true; const acc = Math.round(pos.coords.accuracy);
+      st.innerHTML = `<span style="color:#34d399">●</span> Poloha živě · přesnost ±${acc} m`;
+      renderUser(pos.coords.latitude,pos.coords.longitude,acc);
+    }, err=>{
+      const msg = err.code===1 ? 'Přístup k poloze je zakázaný – povol ho v nastavení prohlížeče.' : err.code===3 ? 'Hledám GPS signál…' : 'Polohu se nepodařilo zjistit.';
+      st.innerHTML = `<span style="color:#fbbf24">●</span> ${msg}`;
+      if(err.code===1) toast('📍 '+msg, 4000);
+    }, { enableHighAccuracy:true, maximumAge:3000, timeout:20000 });
+  };
+  window.centerGPS = function(){
+    follow = true;
+    if(!hasFix){ toast('Ještě nemám tvoji polohu – povol ji v prohlížeči.'); trackGPS(); return; }
+    map.setView([currentPos.lat,currentPos.lng],18,{animate:true});
+  };
+  const _startNav = window.startNav;
+  window.startNav = function(lat,lng,name){
+    arrived = false; follow = true; $('navigation-hud').classList.remove('ug-arrived');
+    if(!hasFix) toast('Polohu zatím neznám – trasa začíná orientačně u FEI. Povol polohu pro přesnou navigaci.',3800);
+    _startNav(lat,lng,name);
+    ugToggleSheet(false);
+  };
+  document.addEventListener('DOMContentLoaded',()=>{ setTimeout(()=>map && map.on('dragstart',()=>follow=false),1500); });
+
+  // ===== KVÍZ =====
+  const quizBank = {
+    easy: [
+      { q:'Co znamená zkratka VŠB?', a:['Vysoká škola báňská','Vysoká škola bankovní','Velká škola budov','Vysoké školy Brno'], c:0 },
+      { q:'Ve kterém městě sídlí VŠB-TUO?', a:['Brno','Ostrava','Olomouc','Opava'], c:1 },
+      { q:'Ve které městské části je hlavní kampus?', a:['Zábřeh','Vítkovice','Poruba','Hrabůvka'], c:2 },
+      { q:'Kterou fakultu označuje zkratka FEI?', a:['Ekonomickou','Strojní','Stavební','Elektrotechniky a informatiky'], c:3 },
+      { q:'Kde se v kampusu nejlépe najíš?', a:['V Menze','V knihovně','Na rektorátu','V aule'], c:0 },
+      { q:'Jaká tramvajová zastávka je přímo u kampusu?', a:['Hlavní nádraží','VŠB-TUO','Stodolní','Karolina'], c:1 }
+    ],
+    medium: [
+      { q:'Kolik fakult má VŠB-TUO?', a:['5','6','7','9'], c:2 },
+      { q:'Kde sídlí Fakulta bezpečnostního inženýrství?', a:['V Porubě u menzy','Ve Výškovicích','Ve Svinově','V centru'], c:1 },
+      { q:'Jak se jmenuje přestupní uzel, kam jezdí tramvaje od VŠB?', a:['Svinov mosty','Dubina','Dřevařská','Náměstí Republiky'], c:0 },
+      { q:'Co znamená zkratka TUO?', a:['Technika u Odry','Technická univerzita Ostrava','Teoretická univerzita Ostrava','Tým univerzit Ostravy'], c:1 },
+      { q:'Která fakulta se dříve jmenovala FMT?', a:['FMT','FAST','HGF','FS'], c:0 },
+      { q:'Kde si půjčíš skripta a najdeš tichou studovnu?', a:['V Menze','Ve Sportovní hale','V Ústřední knihovně','Na kolejích'], c:2 }
+    ],
+    hard: [
+      { q:'Ve kterém roce byla založena báňská akademie, předchůdce VŠB?', a:['1716','1849','1918','1945'], c:1 },
+      { q:'Ve kterém městě byla škola založena původně?', a:['V Ostravě','V Příbrami','V Praze','Ve Vídni'], c:1 },
+      { q:'Kdy se škola přestěhovala do Ostravy?', a:['1945','1918','1961','1990'], c:0 },
+      { q:'Kterou fakultu VŠB nemá?', a:['Ekonomickou','Lékařskou','Strojní','Stavební'], c:1 },
+      { q:'Jak dlouho zhruba trvá pěšky cesta od kolejí na FEI?', a:['Do 10 minut','Asi 30 minut','Hodinu','Bez MHD to nejde'], c:0 },
+      { q:'Jaký je dobrý zvyk na tramvajové zastávce VŠB-TUO ve špičce?', a:['Nastupovat všemi dveřmi a posunout se dovnitř','Stát ve dveřích','Čekat na kolejích','Jet na střeše'], c:0 }
+    ]
+  };
+  const levelName = { easy:'Lehká úroveň', medium:'Střední úroveň', hard:'Pokročilá úroveň' };
+  const levelXp = { easy:10, medium:20, hard:35 };
+  let level='easy', qs=[], idx=0, score=0;
+
+  function shuffle(a){ return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]); }
+  window.setQuizLevel = function(l){
+    level = l;
+    ['easy','medium','hard'].forEach(k=>{ const b=$('q-btn-'+k); if(!b) return; b.className = 'px-2.5 py-1 text-[11px] font-bold rounded-lg transition ' + (k===l?'bg-brand-500 text-white':'bg-gray-100 text-gray-500'); });
+    initQuiz();
+  };
+  window.initQuiz = function(){ qs = shuffle(quizBank[level]).slice(0,5); idx=0; score=0; renderQ(); };
+  function renderQ(){
+    const qEl=$('quiz-question'), opts=$('quiz-options'), fb=$('quiz-feedback');
+    if(!qEl) return;
+    $('quiz-level-badge').innerText = levelName[level];
+    fb.classList.add('hidden');
+    if(idx>=qs.length){
+      const xp = score*levelXp[level];
+      $('quiz-progress-text').innerText = 'Hotovo!';
+      qEl.innerHTML = `${score===qs.length?'🏆':'🎯'} Máš ${score} z ${qs.length} správně · +${xp} XP`;
+      opts.innerHTML = `<button class="ug-opt" style="text-align:center;background:var(--brand-color);color:#fff;border:0" onclick="playBeep(); initQuiz()">Hrát znovu</button>`;
+      return;
+    }
+    const q = qs[idx];
+    $('quiz-progress-text').innerText = `Otázka ${idx+1} / ${qs.length}`;
+    qEl.innerText = q.q;
+    const order = shuffle(q.a.map((t,i)=>({t,i})));
+    opts.innerHTML = order.map(o=>`<button class="ug-opt" data-i="${o.i}">${o.t}</button>`).join('');
+    opts.querySelectorAll('button').forEach(b=>b.onclick=()=>answer(b, q));
+  }
+  function answer(btn,q){
+    const opts=$('quiz-options'), fb=$('quiz-feedback');
+    opts.querySelectorAll('button').forEach(b=>{ b.disabled=true; if(+b.dataset.i===q.c) b.classList.add('ok'); });
+    const ok = +btn.dataset.i===q.c;
+    if(!ok) btn.classList.add('bad');
+    if(ok){ score++; if(currentUser){ currentUser.xp += levelXp[level]; updateXPDisplay(); } }
+    fb.className = 'text-xs font-bold text-center mt-2 ' + (ok?'text-blue-600':'text-rose-400');
+    fb.innerText = ok ? `Správně! +${levelXp[level]} XP` : `Vedle. Správně je: ${q.a[q.c]}`;
+    setTimeout(()=>{ idx++; renderQ(); }, 1400);
+  }
+  if(document.readyState!=='loading') initQuiz(); else document.addEventListener('DOMContentLoaded', ()=>initQuiz());
+})();
+</script>
+<style>
+  /* ===== UniGO light – Apple-like ===== */
+  body{background:#f9fafb !important;color:#111827 !important}
+  header{background:rgba(255,255,255,.92) !important;backdrop-filter:blur(18px);border-bottom:1px solid #f3f4f6 !important;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  header::after{display:none !important}
+  nav{background:#fff !important;margin:0 !important;border-radius:0 !important;border:0 !important;border-top:1px solid #f3f4f6 !important;box-shadow:0 -6px 24px -10px rgba(17,24,39,.12) !important;padding-bottom:max(10px,env(safe-area-inset-bottom)) !important}
+  nav button{color:#9ca3af !important;background:transparent !important;box-shadow:none !important}
+  nav button.text-brand-500{color:#2563eb !important}
+  #tab-quests,#tab-game,#tab-sluzby,#tab-profile{background:#f9fafb !important}
+  #tab-quests>div,#tab-game>div,#tab-profile>div{border-radius:24px}
+  .ug-glass{background:rgba(255,255,255,.97) !important;color:#111827;border:1px solid #f3f4f6 !important;box-shadow:0 12px 32px -12px rgba(17,24,39,.2) !important}
+  #ug-gps-status{color:#6b7280 !important}
+  #ug-toggle{background:#f3f4f6 !important;color:#374151 !important;border-radius:999px !important}
+  .ug-dest{background:#f9fafb !important;border:1px solid #f3f4f6 !important;color:#111827}
+  .ug-dest:hover{background:#eff6ff !important}
+  .ug-dest *{color:inherit}
+  .ug-opt{background:#fff !important;border:1px solid #e5e7eb !important;color:#111827 !important}
+  .ug-opt:hover:not(:disabled){border-color:#2563eb !important}
+  .ug-opt.ok{background:#ecfdf5 !important;border-color:#10b981 !important;color:#065f46 !important}
+  .ug-opt.bad{background:#fff1f2 !important;border-color:#f43f5e !important;color:#9f1239 !important}
+  .ug-tram{color:#2563eb !important;border-color:#2563eb !important;border-radius:999px !important;box-shadow:0 6px 16px rgba(37,99,235,.25) !important}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#fff !important;color:#111827 !important;border:0 !important;backdrop-filter:none}
+  .leaflet-popup-content-wrapper{border-radius:24px !important;box-shadow:0 18px 40px -12px rgba(17,24,39,.25) !important}
+  .leaflet-popup-content-wrapper div{color:inherit}
+  .leaflet-popup-content-wrapper [style*="color: #fff"],.leaflet-popup-content-wrapper [style*="color:#fff"]:not(button){color:#111827 !important}
+  .leaflet-popup-content-wrapper [style*="#a1a1aa"],.leaflet-popup-content-wrapper [style*="#d4d4d8"]{color:#6b7280 !important}
+  .leaflet-popup-content-wrapper button[style]{background:#2563eb !important;color:#fff !important;border-radius:999px !important;box-shadow:0 6px 16px rgba(37,99,235,.3) !important}
+  .leaflet-popup-content-wrapper a[style]{background:#f3f4f6 !important;color:#111827 !important}
+  .leaflet-container{background:#f3f4f6 !important;filter:none !important}
+  .leaflet-tile-pane{filter:none !important}
+  .arcade-cabinet{background:#fff !important;border:1px solid #e5e7eb !important;box-shadow:0 10px 30px -12px rgba(17,24,39,.2) !important}
+  .game-box canvas{border-color:#e5e7eb !important}
+  #heart-popup-overlay>div{background:#fff !important;border-color:#f3f4f6 !important}
+  input:not(.ug-auth-field),select:not(.ug-auth-field){background:#fff !important;color:#111827 !important;border-color:#e5e7eb !important}
+  .ug-auth-field{background:#f1f5f9 !important;color:#111827 !important}
+  .ug-menu{margin-top:10px;background:#f9fafb;border-radius:18px;padding:12px;font-size:12px;color:#111827;max-height:220px;overflow-y:auto}
+  .ug-menu h5{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#2563eb;margin:0 0 6px;display:flex;justify-content:space-between}
+  .ug-menu .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid #eef0f3}
+  .ug-menu .row:first-of-type{border-top:0}
+  .ug-menu .k{font-size:10px;color:#6b7280;font-weight:600}
+  .ug-menu .n{font-weight:600;line-height:1.3}
+  .ug-menu .p{font-weight:800;color:#2563eb;white-space:nowrap}
+  .ug-board{background:#f9fafb;border-radius:18px;padding:10px 12px}
+  .ug-board .r{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+  .ug-board .r+.r{border-top:1px solid #eef0f3}
+  .ug-board .d{font-size:12px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px}
+  .ug-board .d i{color:#2563eb}
+  .ug-board .t{font-size:18px;font-weight:800;color:#2563eb}
+  .ug-board .t small{font-size:11px;color:#9ca3af;font-weight:600;margin-left:6px}
+</style>
+<style>:root{--campus-neutral:#00A499}
+.campus-marker-wrap{background:none;border:0}
+.campus-marker{position:absolute;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:26px;padding:0 8px;border-radius:999px;background:var(--campus-neutral);color:#fff;font:800 11px/1 Inter,sans-serif;border:2px solid #fff;box-shadow:0 4px 12px -4px rgba(0,0,0,.35);white-space:nowrap;opacity:.85}
+.campus-marker-mine{background:var(--brand-color);opacity:1;height:32px;min-width:38px;font-size:13px;z-index:10;box-shadow:0 0 0 4px color-mix(in srgb,var(--brand-color) 30%,transparent),0 6px 16px -4px rgba(0,0,0,.4)}
+.campus-transit-marker{background:#1e3a8a;opacity:1}
+/* Aula – trvale zvýrazněná */
+.campus-marker-aula{background:#0f766e;opacity:1;height:30px;min-width:36px;font-size:12px;box-shadow:0 0 0 4px rgba(15,118,110,.28),0 6px 16px -4px rgba(0,0,0,.4)}
+/* Hvězdárna – černá s pulzujícím žlutým blikáním */
+.campus-marker-hvezdarna{background:#111;opacity:1;height:30px;min-width:36px;animation:hvezdarna-pulse 2.2s ease-in-out infinite}
+@keyframes hvezdarna-pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(250,204,21,0),0 4px 12px -4px rgba(0,0,0,.5)}
+  50%{box-shadow:0 0 16px 6px rgba(250,204,21,.85),0 4px 12px -4px rgba(0,0,0,.5)}
+}
+#campus-toolbar{position:absolute;top:12px;left:12px;right:12px;z-index:30;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;pointer-events:none}
+#campus-toolbar>*{pointer-events:auto}
+.campus-open{display:flex;align-items:center;gap:12px;flex:1;min-width:0;max-width:480px;background:#fff;border-radius:20px;padding:12px 16px;box-shadow:0 10px 30px -12px rgba(0,0,0,.3);text-align:left;color:#111827}
+.ug-logo-pill{display:flex;align-items:center;gap:8px;background:#fff;border-radius:999px;padding:6px 16px 6px 6px;box-shadow:0 10px 30px -12px rgba(0,0,0,.3);flex-shrink:0}
+.ug-logo-badge{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00A9CE,#1E4D9B);color:#fff;display:grid;place-items:center;font-size:12px;box-shadow:0 4px 10px -3px rgba(0,169,206,.6)}
+.ug-logo-mark{width:36px;height:36px;border-radius:11px;border:1px solid #e5e7eb;box-shadow:0 3px 10px -3px rgba(34,100,234,.45);display:block;flex-shrink:0;object-fit:cover}
+.ug-logo-badge i{transform:rotate(0deg)}
+.ug-logo-text{font:800 15px/1 Inter,sans-serif;color:#6b7280;white-space:nowrap}
+.ug-logo-text b{color:#111827;font-weight:900}
+.campus-open span{flex:1;display:flex;flex-direction:column}.campus-open small{font-size:11px;color:#6b7280}
+#ug-sheet{position:absolute;inset:auto 0 0 0;max-height:78%;z-index:45;background:#fff;border-radius:26px 26px 0 0;box-shadow:0 -20px 40px -20px rgba(0,0,0,.35);flex-direction:column;padding:18px 16px 10px;color:#111827}
+.campus-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.campus-sheet-head h2{font-size:22px;font-weight:900}
+.campus-eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--brand-color)}
+.campus-icon-button{width:34px;height:34px;border-radius:12px;background:#f3f4f6;color:#6b7280;display:grid;place-items:center;flex-shrink:0}
+.campus-search{display:flex;align-items:center;gap:10px;background:#f3f4f6;border-radius:16px;padding:6px 6px 6px 14px;color:#9ca3af}
+.campus-search input{flex:1;background:transparent !important;border:0 !important;outline:0;font-size:14px;padding:6px 0}
+.campus-categories{display:flex;gap:6px;overflow-x:auto;margin:12px 0 6px;scrollbar-width:none}
+.campus-categories button{white-space:nowrap;padding:7px 12px;border-radius:999px;background:#f3f4f6;font-size:12px;font-weight:700;color:#4b5563}
+.campus-categories button.is-active{background:var(--brand-color);color:#fff}
+.campus-list,#ug-list{overflow-y:auto;flex:1}
+.campus-group-title{display:flex;justify-content:space-between;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin:14px 4px 6px}
+.campus-result{display:flex;align-items:center;gap:12px;width:100%;padding:10px;border-radius:16px;text-align:left}
+.campus-result:hover{background:#f9fafb}
+.campus-code{min-width:44px;height:36px;padding:0 6px;border-radius:12px;background:color-mix(in srgb,var(--campus-neutral) 14%,#fff);color:var(--campus-neutral);display:grid;place-items:center;font-weight:900;font-size:12px}
+.campus-result-text{flex:1;display:flex;flex-direction:column;min-width:0}
+.campus-result-text strong{font-size:13px}.campus-result-text small{font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.campus-result-arrow{color:#d1d5db;font-size:12px}
+.campus-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:30px;color:#6b7280;text-align:center}
+.campus-popup{min-width:200px}.campus-popup h3{font-weight:900;font-size:16px}.campus-popup p{font-size:12px;color:#6b7280;margin:2px 0 6px}
+.campus-note{font-size:11px;color:#9ca3af}
+.campus-source{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;color:var(--brand-color)}
+.campus-primary-button{margin-top:10px;width:100%;padding:10px;border-radius:999px;background:var(--brand-color);color:#fff;font-weight:800;font-size:12px}
+
+/* Složky a podkategorie ve výběru "Kam to bude?" */
+.campus-folder{margin:8px 0;border:1px solid #f3f4f6;border-radius:16px;overflow:hidden}
+.campus-folder>summary{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:12px;font-weight:800;color:#111827;cursor:pointer;list-style:none;user-select:none}
+.campus-folder>summary::-webkit-details-marker{display:none}
+.campus-folder-icon{color:var(--brand-color);font-size:12px}
+.campus-folder-title{flex:1}
+.campus-folder-caret{font-size:10px;color:#9ca3af;transition:transform .2s}
+.campus-folder:not([open])>summary .campus-folder-caret{transform:rotate(-90deg)}
+.campus-folder-body{padding:2px 6px 8px}
+.campus-subfolder{margin:4px 0 4px 10px;border-left:2px solid #eef0f3}
+.campus-subfolder>summary{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;font-size:11px;font-weight:800;color:#4b5563;cursor:pointer;list-style:none;user-select:none}
+.campus-subfolder>summary::-webkit-details-marker{display:none}
+.campus-sub-count{font-size:10px;color:#9ca3af;font-weight:700}
+.campus-group-mine{color:var(--brand-color)}
+
+/* Klub Vrtule – blikající diskotéka */
+.campus-marker-vrtule{height:30px;min-width:0;padding:0 10px;gap:6px;font-size:11px;font-weight:800;background:#7c3aed;animation:vrtule-disco 1s linear infinite}
+.campus-marker-vrtule i{font-size:14px}
+@keyframes vrtule-disco{
+  0%{background:#7c3aed;box-shadow:0 0 10px 2px rgba(124,58,237,.7)}
+  25%{background:#db2777;box-shadow:0 0 14px 4px rgba(219,39,119,.8)}
+  50%{background:#0891b2;box-shadow:0 0 10px 2px rgba(8,145,178,.7)}
+  75%{background:#d97706;box-shadow:0 0 14px 4px rgba(217,119,6,.8)}
+  100%{background:#7c3aed;box-shadow:0 0 10px 2px rgba(124,58,237,.7)}
+}
+
+/* Vyskakovací okénko budovy – sjednocený vzhled */
+.leaflet-popup-content{margin:14px 16px;width:auto !important;line-height:1.45}
+.campus-popup{width:230px}
+.campus-popup h3{font-weight:900;font-size:16px;color:#111827}
+.campus-popup p{font-size:12px;color:#6b7280;margin:2px 0 6px}
+.campus-popup-body{font-size:12px;color:#111827}
+.leaflet-popup-close-button{width:26px !important;height:26px !important;margin:6px;color:#6b7280 !important;font-size:16px !important;line-height:26px !important;text-align:center;background:#f3f4f6;border-radius:50%}
+
+/* Karty služeb */
+.campus-service-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#6b7280;margin-bottom:8px}
+.campus-service-menu{font-size:12px;color:#111827;background:#f9fafb;border-radius:16px;padding:12px;margin-bottom:8px}
+.campus-service-link{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:8px;padding:11px 14px;border-radius:14px;background:#f3f4f6;color:#111827;font-size:12px;font-weight:800;text-decoration:none;border:0;cursor:pointer;text-align:left}
+.campus-service-link:hover{background:#e5e7eb}
+.campus-service-nav{background:var(--brand-color);color:#fff}
+.campus-service-nav:hover{background:var(--brand-dark,var(--brand-color))}
+
+/* Čitelnější záložky a složky v "Kam to bude?" */
+.campus-categories{padding:2px 0 4px}
+.campus-categories button{border:1.5px solid #d1d5db;background:#fff;color:#111827;font-size:13px;font-weight:800;padding:8px 14px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.campus-categories button.is-active{border-color:var(--brand-color);background:var(--brand-color);color:#fff}
+.campus-folder{border:1.5px solid #e5e7eb;background:#fff}
+.campus-folder>summary{background:#f3f4f6;font-size:14px;color:#111827;padding:12px 14px}
+.campus-subfolder>summary{font-size:13px;color:#111827}
+.campus-result-text strong{color:#111827}
+/* Lišta kategorií se nesmí smrštit pod seznam */
+#ug-sheet .campus-search,#ug-sheet .campus-categories,#ug-sheet .campus-sheet-head{flex-shrink:0}
+#ug-sheet .campus-categories{position:relative;z-index:2;min-height:46px;align-items:center;background:#fff}
+#ug-sheet .campus-list{min-height:0;position:relative;z-index:1}
+
+/* Hry – vše vidět bez scrollování */
+.game-box{gap:6px}.game-box>*+*{margin-top:6px !important}
+.game-box canvas{height:min(34vh,240px) !important;width:auto !important;max-width:100%}
+.game-box .arcade-cabinet{padding:6px !important}
+.game-box button{padding-top:8px !important;padding-bottom:8px !important}
+</style>
+<script>// Zvýraznění budov aktuální fakulty v seznamu
+(function(){
+  const orig = window.renderCampusList;
+  if(!orig) return;
+  window.renderCampusList = function(){
+    orig();
+    if(typeof currentUser==='undefined' || !currentUser) return;
+    document.querySelectorAll('#ug-list .campus-result').forEach(btn=>{
+      const m = (btn.getAttribute('onclick')||'').match(/'([^']+)'/); if(!m) return;
+      const b = UniGOCampus.find(x=>x.id===m[1]);
+      const code = btn.querySelector('.campus-code');
+      if(b && (b.faculties||[]).includes(currentUser.faculty) && code){ code.style.background='var(--brand-color)'; code.style.color='#fff'; }
+    });
+  };
+})();
+</script>
+</body>
+</html>

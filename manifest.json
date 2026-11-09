@@ -1,0 +1,22 @@
+{
+  "short_name": "UniGO",
+  "name": "VŠB UniGO",
+  "description": "Kampus, ve kterém se neztratíš",
+  "start_url": "https://lukkeeess.github.io/VSB-UniGO/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#005A9C",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}
